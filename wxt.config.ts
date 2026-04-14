@@ -17,6 +17,7 @@ export default defineConfig({
       'https://x.com/*',
       'https://www.linkedin.com/*',
       'https://api.anthropic.com/*',
+      'https://generativelanguage.googleapis.com/*',
     ],
     action: {},
     web_accessible_resources: [

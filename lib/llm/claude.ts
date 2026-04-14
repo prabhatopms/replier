@@ -7,7 +7,6 @@ async function getConfig(): Promise<LLMConfig> {
   const stored = (result.llmConfig as Partial<LLMConfig>) || {};
   return {
     ...DEFAULT_LLM_CONFIG,
-    apiKey: '', // Will be overridden by getApiKey()
     ...stored,
   };
 }

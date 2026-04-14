@@ -1,6 +1,6 @@
 import { getContact, updateContactSummary } from '@/lib/db/contacts';
 import { getRecentMessages } from '@/lib/db/messages';
-import { claudeProvider } from '@/lib/llm/claude';
+import { getActiveProvider } from '@/lib/llm/provider';
 import type { Message } from '@/types/message';
 
 /**
@@ -19,7 +19,8 @@ export async function summarizeIfNeeded(contactId: string): Promise<void> {
     contact.displayName,
   );
 
-  const newSummary = await claudeProvider.summarizeConversation(
+  const provider = await getActiveProvider();
+  const newSummary = await provider.summarizeConversation(
     contact.conversationSummary,
     formattedMessages,
   );
@@ -42,7 +43,8 @@ export async function forceSummarize(contactId: string): Promise<string> {
     contact.displayName,
   );
 
-  const newSummary = await claudeProvider.summarizeConversation(
+  const provider = await getActiveProvider();
+  const newSummary = await provider.summarizeConversation(
     '', // Start fresh
     formattedMessages,
   );

@@ -2,7 +2,7 @@ import type { ToneType } from '@/types/contact';
 import { getContact, incrementMessageCount } from '@/lib/db/contacts';
 import { getRecentMessages } from '@/lib/db/messages';
 import { createPendingReply, updateReplyText } from '@/lib/db/replies';
-import { claudeProvider } from '@/lib/llm/claude';
+import { getActiveProvider } from '@/lib/llm/provider';
 import { buildContext } from './context-builder';
 import { summarizeIfNeeded } from './summarizer';
 
@@ -37,8 +37,9 @@ export async function generateReply(
     // Build context (system prompt + message history)
     const context = await buildContext(contact, messages, tone);
 
-    // Call the LLM
-    const replyText = await claudeProvider.generateReply(
+    // Call the active LLM provider (Claude or Gemini)
+    const provider = await getActiveProvider();
+    const replyText = await provider.generateReply(
       context.systemPrompt,
       context.messages,
     );
