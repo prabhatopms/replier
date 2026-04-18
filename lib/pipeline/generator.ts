@@ -4,9 +4,10 @@ import { getRecentMessages } from '@/lib/db/messages';
 import { createPendingReply, updateReplyText } from '@/lib/db/replies';
 import { getActiveProvider } from '@/lib/llm/provider';
 import { buildContext } from './context-builder';
+import { cleanLLMResponse } from '@/lib/llm/prompt-builder';
 import { summarizeIfNeeded } from './summarizer';
 
-const SUMMARY_THRESHOLD = 50;
+const SUMMARY_THRESHOLD = 15;
 
 /**
  * Generate a reply for a contact.
@@ -16,6 +17,7 @@ export async function generateReply(
   contactId: string,
   triggerMessageId: string,
   tone: ToneType,
+  freshStart = false,
 ): Promise<{ replyId: string; text: string } | null> {
   const contact = await getContact(contactId);
   if (!contact || !contact.isActive) return null;
@@ -27,15 +29,16 @@ export async function generateReply(
     tone,
   );
 
-  // Notify content script that generation started
-  notifyContentScript(contactId, 'generating');
-
   try {
     // Load recent messages
-    const messages = await getRecentMessages(contactId, 40);
+    const messages = await getRecentMessages(contactId, 80);
+
+    // Notify content script that generation started (with context info)
+    notifyContentScript(contactId, 'generating', undefined, undefined, undefined, undefined,
+      messages.length, !!contact.conversationSummary);
 
     // Build context (system prompt + message history)
-    const context = await buildContext(contact, messages, tone);
+    const context = await buildContext(contact, messages, tone, freshStart);
 
     // Call the active LLM provider (Claude or Gemini)
     const provider = await getActiveProvider();
@@ -44,20 +47,28 @@ export async function generateReply(
       context.messages,
     );
 
-    // Store the generated reply
-    await updateReplyText(pendingReply.id, replyText);
+    // Clean HTML/XML artifacts and validate
+    const cleaned = cleanLLMResponse(replyText);
+    if (!cleaned) {
+      throw new Error('LLM returned empty response. Try again or check API key.');
+    }
 
-    // Increment message count and check if summarization is needed
+    // Store the generated reply
+    await updateReplyText(pendingReply.id, cleaned);
+
+    // Increment message count
     const newCount = await incrementMessageCount(contactId);
-    if (newCount >= SUMMARY_THRESHOLD) {
-      // Summarize in background — don't block reply delivery
+
+    // Always update context/memory in the background after generation.
+    // This ensures the ctx panel and future prompts have fresh data.
+    if (messages.length >= 5) {
       summarizeIfNeeded(contactId).catch((err) =>
         console.error('[Replier] Summarization error:', err),
       );
     }
 
     // Notify content script that reply is ready
-    notifyContentScript(contactId, 'ready', pendingReply.id, replyText, tone);
+    notifyContentScript(contactId, 'ready', pendingReply.id, cleaned, tone);
 
     return { replyId: pendingReply.id, text: replyText };
   } catch (error) {
@@ -81,6 +92,8 @@ async function notifyContentScript(
   text?: string,
   tone?: ToneType,
   error?: string,
+  messageCount?: number,
+  hasSummary?: boolean,
 ): Promise<void> {
   const tabs = await browser.tabs.query({
     active: true,
@@ -93,6 +106,8 @@ async function notifyContentScript(
     browser.tabs.sendMessage(tabId, {
       type: 'REPLY_GENERATING',
       contactId,
+      messageCount,
+      hasSummary,
     });
   } else if (status === 'ready' && replyId && text) {
     browser.tabs.sendMessage(tabId, {

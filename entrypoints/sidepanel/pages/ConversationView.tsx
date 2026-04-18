@@ -12,6 +12,7 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -66,12 +67,33 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
         >
           &larr; Back
         </button>
-        <h2 className="text-base font-semibold text-gray-900">
+        <h2 className="text-base font-semibold text-gray-900 flex-1">
           {contact?.displayName || 'Conversation'}
         </h2>
         <span className="text-xs text-gray-400">
-          ({messages.length} messages)
+          {messages.length} msgs
         </span>
+        <button
+          onClick={async () => {
+            if (!confirm('Clear all stored messages for this contact? The extension will rescrape from Instagram next time you open their chat.')) return;
+            setClearing(true);
+            await browser.runtime.sendMessage({
+              type: 'CLEAR_HISTORY',
+              contactId,
+            } satisfies ExtensionMessage);
+            setMessages([]);
+            setClearing(false);
+          }}
+          disabled={clearing}
+          className="
+            px-2.5 py-1.5 text-[11px] font-medium
+            text-red-600 bg-red-50 hover:bg-red-100
+            rounded-lg transition-colors border border-red-200
+            disabled:opacity-50
+          "
+        >
+          {clearing ? 'Clearing...' : 'Clear & Rescrape'}
+        </button>
       </div>
 
       {/* Conversation Summary */}

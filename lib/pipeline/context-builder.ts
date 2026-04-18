@@ -13,19 +13,24 @@ interface UserProfile {
 
 /**
  * Assemble the complete context for generating a reply.
- * Combines the 6-layer system prompt with conversation history.
+ * If a custom system prompt is set, it replaces the auto-generated one entirely.
  */
 export async function buildContext(
   contact: Contact,
   messages: Message[],
   tone: ToneType,
+  freshStart = false,
 ): Promise<{ systemPrompt: string; messages: LLMMessage[] }> {
-  // Load user profile from storage
-  const result = await browser.storage.local.get('userProfile');
+  const result = await browser.storage.local.get(['userProfile', 'customSystemPrompt']);
   const userProfile = result.userProfile as UserProfile | undefined;
+  const customPrompt = (result.customSystemPrompt as string) || '';
 
-  const systemPrompt = buildSystemPrompt(contact, tone, userProfile);
-  const llmMessages = buildMessageHistory(messages, contact);
+  // Use custom prompt if set, otherwise auto-generate
+  const systemPrompt = customPrompt.trim()
+    ? customPrompt.trim()
+    : buildSystemPrompt(contact, tone, userProfile, freshStart);
+
+  const llmMessages = buildMessageHistory(messages, contact, freshStart);
 
   return { systemPrompt, messages: llmMessages };
 }

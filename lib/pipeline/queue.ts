@@ -4,6 +4,7 @@ interface QueueItem {
   contactId: string;
   triggerMessageId: string;
   tone: ToneType;
+  freshStart?: boolean;
   priority: number; // higher = more urgent
   addedAt: number;
 }

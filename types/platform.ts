@@ -25,6 +25,9 @@ export type MessageContentType =
 export interface ContactInfo {
   name: string;
   platformUserId: string;
+  threadId?: string;
+  avatarUrl?: string;
+  numericUserId?: string;
 }
 
 export interface PlatformAdapter {
@@ -57,6 +60,11 @@ export interface PlatformAdapter {
   getInputBox(): HTMLElement | null;
   insertTextIntoInput(text: string): void;
   getPopoverAnchorElement(): HTMLElement | null;
+
+  // Auto-pilot (optional — platform-specific)
+  getThreadId?(): string | null;
+  triggerSend?(): void;
+  hasUserDraft?(): boolean;
 
   // Health check
   healthCheck(): { ok: boolean; issues: string[] };

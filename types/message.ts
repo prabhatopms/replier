@@ -10,4 +10,6 @@ export interface Message {
   platform: Platform;
   scraped: boolean;
   rawData?: string;
+  /** false = ghost message (generated but never sent, or deleted). Excluded from LLM context. */
+  verified?: boolean;
 }

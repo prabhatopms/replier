@@ -1,4 +1,4 @@
-import type { Contact, ToneType } from '@/types/contact';
+import type { Contact, ToneType, StructuredSummary } from '@/types/contact';
 import type { Message } from '@/types/message';
 import type { LLMMessage } from './types';
 import { getTonePrompt } from './tones';
@@ -9,10 +9,10 @@ interface UserProfile {
 }
 
 const TOKEN_BUDGET = {
-  total: 8192,
-  systemPrompt: 1500,
-  generation: 500,
-  history: 6192,
+  total: 18000,
+  systemPrompt: 3000,
+  generation: 1024,
+  history: 14500,
 };
 
 const CHARS_PER_TOKEN = 4;
@@ -24,78 +24,176 @@ export function buildSystemPrompt(
   contact: Contact,
   tone: ToneType,
   userProfile?: UserProfile,
+  freshStart = false,
 ): string {
   const layers: string[] = [];
 
-  // Layer 1: Base System
+  // Layer 1: You are texting on Instagram. SHORT.
   layers.push(
-    `You are generating a message reply in a conversation. You write as if you ARE the user — first person, their texting style, their vocabulary. Match message length to the conversation's natural rhythm. Never sound like an AI. Never use formal language unless the user's texting style is formal.`,
+    `You text on Instagram DMs as this person. First person. Their style. Their words.
+
+LENGTH: MAX 1-2 short sentences. This is a DM, not an email. Think phone keyboard.
+
+Good examples:
+- "haha wait what 😂"
+- "yoo that's sick, where was this?"
+- "nah i'm good, maybe tmrw?"
+- "lol you're crazy"
+- "omg send me that reel"
+
+Bad examples (NEVER do this):
+- "Hey! That sounds absolutely amazing. I really appreciate you sharing that with me. We should definitely plan something soon!"
+- "I completely understand what you mean. It's so important to..."
+- Any message longer than 2 lines
+
+NO AI phrases: "absolutely", "I appreciate", "That sounds wonderful", "definitely", "I'd love to"`,
   );
 
-  // Layer 2: User Profile
-  if (userProfile?.description) {
-    layers.push(
-      `About you: ${userProfile.description}${userProfile.textingStyle ? `\nYour texting style: ${userProfile.textingStyle}` : ''}`,
-    );
+  // Layer 2: Who you are
+  if (userProfile?.description || userProfile?.textingStyle) {
+    const parts = ['YOU:'];
+    if (userProfile.description) parts.push(userProfile.description);
+    if (userProfile.textingStyle) parts.push(`Texting style: ${userProfile.textingStyle}`);
+    layers.push(parts.join('\n'));
   }
 
-  // Layer 3: Contact Persona
-  const personaParts = [
-    `You are talking to ${contact.displayName}.`,
-  ];
-  if (contact.relationship) {
-    personaParts.push(`Relationship: ${contact.relationship}.`);
-  }
-  if (contact.personalNotes) {
-    personaParts.push(`About them: ${contact.personalNotes}`);
-  }
-  personaParts.push(
-    `Your goal with this person: ${contact.goal}${contact.goalDescription ? ` — ${contact.goalDescription}` : ''}`,
-  );
-  if (contact.conversationSummary) {
-    personaParts.push(
-      `Conversation history summary: ${contact.conversationSummary}`,
-    );
-  }
-  layers.push(personaParts.join('\n'));
+  // Layer 3: Who you're talking to
+  layers.push(buildPersonaLayer(contact, freshStart));
 
-  // Layer 4: Tone Modifier
-  layers.push(`Tone for this reply: ${getTonePrompt(tone)}`);
+  // Layer 4: Tone
+  layers.push(`Tone: ${getTonePrompt(tone)}`);
 
-  // Layer 6: Generation Instructions (Layer 5 is the message history, handled separately)
+  // Layer 5: Style matching
+  if (!freshStart && contact.structuredSummary?.communicationStyle) {
+    layers.push(buildStyleMatchingLayer(contact.structuredSummary));
+  }
+
+  // Layer 6: Output format
   layers.push(
-    `Generate exactly ONE reply message. Rules:
-- Match the conversation's energy, length, and emoji patterns
-- Reference specific details from the conversation when natural
-- Don't repeat what was just said
-- Don't be generic — be specific to this person and context
-- Output ONLY the message text, nothing else — no quotes, no prefix, no explanation`,
+    `Output ONLY the message. No quotes, no prefix, no explanation. Plain text, no HTML/tags. Complete the sentence. If they shared a reel/link, react briefly.`,
   );
 
   return layers.join('\n\n');
 }
 
 /**
+ * Build the contact persona layer — always includes all available info.
+ */
+function buildPersonaLayer(contact: Contact, freshStart: boolean): string {
+  const parts = [`CONTACT: ${contact.displayName} (@${contact.platformUserId})`];
+
+  if (contact.relationship) {
+    parts.push(`Relationship: ${contact.relationship}`);
+  }
+  if (contact.personalNotes) {
+    parts.push(`Personal notes about them: ${contact.personalNotes}`);
+  }
+  if (contact.goal) {
+    parts.push(
+      `Your goal with this person: ${contact.goal}${contact.goalDescription ? ` — ${contact.goalDescription}` : ''}`,
+    );
+  }
+
+  if (freshStart) {
+    parts.push(`START A BRAND NEW CONVERSATION. Do NOT reference any past messages or history.
+Send a creative opener based on the tone. Examples by tone:
+- casual: "yo", "wassup", "what's good"
+- flirty: "been thinking about you ngl", "so when are you taking me out", "you looked cute in that last story"
+- funny: "ok random but would you rather fight 100 duck-sized horses or 1 horse-sized duck", "hot take: pineapple on pizza is elite"
+- chad: "clear your schedule this weekend", "I have a plan"
+- smooth: "you crossed my mind today", "I owe you a coffee"
+- default: a fun ice breaker, trivia question, or "this reminded me of you" type opener
+Keep it SHORT — one line max. Make it interesting enough they WANT to reply.`);
+    return parts.join('\n');
+  }
+
+  const ss = contact.structuredSummary;
+  if (ss) {
+    if (ss.overview) {
+      parts.push(`Relationship overview: ${ss.overview}`);
+    }
+    if (ss.keyTopics.length > 0) {
+      parts.push(`Key topics you discuss: ${ss.keyTopics.join(', ')}`);
+    }
+    if (ss.sharedInterests.length > 0) {
+      parts.push(`Shared interests: ${ss.sharedInterests.join(', ')}`);
+    }
+    if (ss.insideJokes.length > 0) {
+      parts.push(
+        `Inside jokes/references you can use naturally: ${ss.insideJokes.join('; ')}`,
+      );
+    }
+    if (ss.emotionalDynamics) {
+      parts.push(`Emotional dynamics: ${ss.emotionalDynamics}`);
+    }
+    if (ss.recentContext) {
+      parts.push(`Recent context: ${ss.recentContext}`);
+    }
+  } else if (contact.conversationSummary) {
+    parts.push(`Conversation history summary: ${contact.conversationSummary}`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Build instructions for matching the user's natural communication style.
+ */
+function buildStyleMatchingLayer(ss: StructuredSummary): string {
+  const style = ss.communicationStyle;
+  const parts = ['STYLE MATCHING — match these patterns:'];
+
+  if (style.avgLength === 'short') {
+    parts.push('- Keep messages SHORT (1-2 lines, punchy, no essays)');
+  } else if (style.avgLength === 'long') {
+    parts.push('- Longer messages are fine — the user writes detailed messages');
+  } else {
+    parts.push('- Medium-length messages (2-4 lines)');
+  }
+
+  if (style.emojiUsage === 'heavy') {
+    parts.push('- Use emojis freely — the user uses them a lot');
+  } else if (style.emojiUsage === 'none') {
+    parts.push('- Do NOT use emojis — the user rarely uses them');
+  } else {
+    parts.push('- Use emojis sparingly (1-2 per message max)');
+  }
+
+  if (style.initiator === 'user') {
+    parts.push('- The user usually initiates — be engaging but let them lead');
+  } else if (style.initiator === 'contact') {
+    parts.push('- The contact usually initiates — respond with matching energy');
+  }
+
+  return parts.join('\n');
+}
+
+/**
  * Convert stored messages into LLM conversation format.
  * Fills from newest to oldest within token budget.
+ * Enriches reel/link messages with context hints.
  */
 export function buildMessageHistory(
   messages: Message[],
   contact: Contact,
+  freshStart = false,
 ): LLMMessage[] {
+  // For fresh start, use ZERO past messages — truly new conversation
+  // Filter out ghost messages (verified === false) so LLM only sees real conversation
+  const cleanMessages = messages.filter((m) => m.verified !== false);
+  const sourceMessages = freshStart ? [] : cleanMessages;
+
   const maxChars = TOKEN_BUDGET.history * CHARS_PER_TOKEN;
   const result: LLMMessage[] = [];
   let totalChars = 0;
 
-  // Messages should already be in chronological order (oldest first)
-  // We iterate from the end to find how many we can fit
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    const text =
-      msg.contentType === 'text'
-        ? msg.content
-        : `[${msg.contentType}: ${msg.content || 'media'}]`;
-    const chars = text.length + 20; // overhead for role/formatting
+  for (let i = sourceMessages.length - 1; i >= 0; i--) {
+    const msg = sourceMessages[i];
+    // Skip internal instruction messages
+    if (msg.content.startsWith('[Replier instruction:')) continue;
+
+    let text = formatMessageContent(msg);
+    const chars = text.length + 20;
 
     if (totalChars + chars > maxChars) break;
 
@@ -106,7 +204,87 @@ export function buildMessageHistory(
     totalChars += chars;
   }
 
-  return result;
+  // Claude requires the first message to be role: 'user'.
+  if (result.length === 0) {
+    result.push({
+      role: 'user',
+      content: freshStart
+        ? `Start a new conversation with ${contact.displayName}. Just a casual opener.`
+        : `Send a message to ${contact.displayName}. Be natural and match the conversation context.`,
+    });
+  } else if (result[0].role === 'assistant') {
+    result.unshift({
+      role: 'user',
+      content: `[Earlier messages from ${contact.displayName}]`,
+    });
+  }
+
+  // Claude requires alternating roles. Merge consecutive same-role messages.
+  const merged: LLMMessage[] = [];
+  for (const msg of result) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].content += '\n' + msg.content;
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Format a message's content for the LLM, enriching non-text content.
+ */
+function formatMessageContent(msg: Message): string {
+  if (msg.contentType === 'text') {
+    // Check if it's a URL (reel, post, link)
+    const content = msg.content.trim();
+    if (isInstagramReelOrPost(content)) {
+      return `[Shared an Instagram reel/post: ${content} — react to it naturally, guess what it might be about from the URL or conversation context]`;
+    }
+    if (isUrl(content)) {
+      return `[Shared a link: ${content}]`;
+    }
+    return content;
+  }
+
+  if (msg.contentType === 'story_reply') {
+    return `[Replied to their Instagram story: ${msg.content || 'reacted'}]`;
+  }
+
+  if (msg.contentType === 'link') {
+    const content = msg.content.trim();
+    if (isInstagramReelOrPost(content)) {
+      return `[Shared an Instagram reel/post: ${content} — react to it naturally]`;
+    }
+    return `[Shared a link: ${content}]`;
+  }
+
+  return `[${msg.contentType}: ${msg.content || 'media'}]`;
+}
+
+function isInstagramReelOrPost(text: string): boolean {
+  return /instagram\.com\/(reel|p|reels)\//.test(text) ||
+         /instagram\.com\/.*\/reel\//.test(text);
+}
+
+function isUrl(text: string): boolean {
+  return /^https?:\/\//.test(text.trim());
+}
+
+/**
+ * Strip any HTML/XML tags from generated text.
+ * Safety net in case the LLM outputs markup despite instructions.
+ */
+export function cleanLLMResponse(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, '') // Remove HTML/XML tags
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
 }
 
 /**
@@ -118,19 +296,22 @@ export function buildSummarizationPrompt(
 ): string {
   return `You are maintaining a conversation summary for an AI messaging assistant.
 
-${existingSummary ? `Existing summary:\n${existingSummary}\n` : 'No existing summary yet.'}
+${existingSummary ? `Context/analytics:\n${existingSummary}\n` : 'No existing summary yet.'}
 
-New messages since last summary:
+Messages:
 ${newMessages}
 
-Update the summary to incorporate the new messages. Capture:
-- Key topics discussed
-- Plans made or mentioned
-- Inside jokes or recurring themes
-- Emotional dynamics and rapport level
-- Promises or commitments made
-- Important personal details shared
-- Any context the user should remember for future messages
+Create a comprehensive summary. Capture:
+- Key topics discussed and recurring themes
+- Plans made or mentioned (with dates if any)
+- Inside jokes, pet names, or recurring humor
+- Shared interests and activities
+- Emotional dynamics and rapport level (flirty, friendly, professional, tense)
+- Promises or commitments made by either person
+- Important personal details shared (job, hobbies, family, etc.)
+- Recent context — what's the latest thread of conversation about?
+- Any unresolved questions or open threads
 
-Keep the summary concise (under 500 words) but comprehensive. Write in third person.`;
+Keep the summary concise (under 600 words) but comprehensive. Write in third person.
+Format topics, interests, and inside jokes as comma-separated lists for easy parsing.`;
 }

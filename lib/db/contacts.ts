@@ -5,14 +5,16 @@ import { ConversationGoal } from '@/types/contact';
 import type { Platform } from '@/types/platform';
 
 export function createContact(
-  data: Omit<Contact, 'id' | 'createdAt' | 'updatedAt' | 'lastMessageAt' | 'messageCount' | 'conversationSummary'> &
-    Partial<Pick<Contact, 'conversationSummary'>>,
+  data: Omit<Contact, 'id' | 'createdAt' | 'updatedAt' | 'lastMessageAt' | 'messageCount' | 'conversationSummary' | 'historyScrubbed' | 'historyScrubCount'> &
+    Partial<Pick<Contact, 'conversationSummary' | 'historyScrubbed' | 'historyScrubCount' | 'threadId' | 'numericUserId'>>,
 ): Contact {
   const now = Date.now();
   return {
     ...data,
     id: uuid(),
     conversationSummary: data.conversationSummary ?? '',
+    historyScrubbed: data.historyScrubbed ?? false,
+    historyScrubCount: data.historyScrubCount ?? 0,
     lastMessageAt: now,
     messageCount: 0,
     createdAt: now,
@@ -78,6 +80,7 @@ export function newDefaultContact(
   platform: Platform,
   platformUserId: string,
   displayName: string,
+  threadId?: string,
 ): Contact {
   return createContact({
     platform,
@@ -89,5 +92,18 @@ export function newDefaultContact(
     personalNotes: '',
     preferredTone: 'default' as ToneType,
     isActive: true,
+    threadId,
+  });
+}
+
+export async function updateScrubStatus(
+  id: string,
+  count: number,
+): Promise<void> {
+  await db.contacts.update(id, {
+    historyScrubbed: true,
+    historyScrubCount: count,
+    lastScrubAt: Date.now(),
+    updatedAt: Date.now(),
   });
 }

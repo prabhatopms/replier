@@ -20,6 +20,22 @@ export const GOAL_LABELS: Record<ConversationGoal, string> = {
   [ConversationGoal.CUSTOM]: 'Custom',
 };
 
+export interface StructuredSummary {
+  overview: string;
+  keyTopics: string[];
+  sharedInterests: string[];
+  insideJokes: string[];
+  emotionalDynamics: string;
+  communicationStyle: {
+    avgLength: 'short' | 'medium' | 'long';
+    emojiUsage: 'none' | 'light' | 'heavy';
+    responseTime: string;
+    initiator: 'user' | 'contact' | 'balanced';
+  };
+  recentContext: string;
+  rawSummary: string;
+}
+
 export interface Contact {
   id: string;
   platform: Platform;
@@ -30,12 +46,19 @@ export interface Contact {
   goalDescription: string;
   personalNotes: string;
   conversationSummary: string;
+  structuredSummary?: StructuredSummary;
   preferredTone: ToneType;
   isActive: boolean;
   lastMessageAt: number;
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  // Auto-pilot fields
+  threadId?: string;
+  numericUserId?: string;
+  historyScrubbed: boolean;
+  historyScrubCount: number;
+  lastScrubAt?: number;
 }
 
 export type ToneType =

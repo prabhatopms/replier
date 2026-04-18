@@ -44,6 +44,7 @@ export const claudeProvider: LLMProvider = {
       body: JSON.stringify({
         model: config.model,
         max_tokens: config.maxTokens,
+        temperature: 0.9,
         system: systemPrompt,
         messages,
       }),

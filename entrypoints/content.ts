@@ -1,8 +1,11 @@
 import '@/assets/styles/global.css';
+import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { resolveAdapter } from '@/lib/platforms/registry';
-import type { PlatformAdapter, ExtractedMessage } from '@/types/platform';
+import type { ExtractedMessage } from '@/types/platform';
 import type { ExtensionMessage } from '@/lib/messaging/types';
+import type { ToneType } from '@/types/contact';
+import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 
 export default defineContentScript({
   matches: [
@@ -23,7 +26,7 @@ export default defineContentScript({
 
     console.log(`[Replier] Loaded ${adapter.name} adapter`);
 
-    // Inject network interceptor for richer data capture
+    // Inject network interceptor
     try {
       await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
         keepInDom: true,
@@ -33,10 +36,37 @@ export default defineContentScript({
       console.log('[Replier] No interceptor for this platform, using DOM-only');
     }
 
-    // Track current contact
-    let currentContactId: string | null = null;
+    // =========================================================================
+    // STATE
+    // =========================================================================
 
-    // Listen for intercepted API responses
+    let currentContactId: string | null = null;
+    let currentContactName: string = '';
+    let currentContactUsername: string = '';
+    let messageObserver: MutationObserver | null = null;
+    let scrapeAbortController: AbortController | null = null;
+    let scrapedMessageCount = 0;
+
+    // Status popover state
+    let popoverStatus: PopoverStatus = 'idle';
+    const activityLogs: LogEntry[] = [];
+    let replyText = '';
+    let replyId = '';
+    let replyTone: ToneType = 'default';
+    let errorMessage = '';
+    let contactContext: import('@/components/StatusPopover').ContactContext | null = null;
+
+    function addLog(message: string, type: LogEntry['type'] = 'info'): void {
+      activityLogs.push({ time: Date.now(), message, type });
+      // Keep max 50 entries
+      if (activityLogs.length > 50) activityLogs.shift();
+      renderPopover();
+    }
+
+    // =========================================================================
+    // INTERCEPTED API LISTENER
+    // =========================================================================
+
     window.addEventListener('replier:api-response', ((event: CustomEvent) => {
       if (!adapter) return;
       const { url, body } = event.detail;
@@ -48,46 +78,266 @@ export default defineContentScript({
       }
     }) as EventListener);
 
-    // Detect current contact
+    // LS message buffer for scraping
+    const lsMessageBuffer: ExtractedMessage[] = [];
+    window.addEventListener('replier:ls-messages', ((event: CustomEvent) => {
+      const { messages } = event.detail as {
+        messages: Array<{
+          text: string; threadId: string; timestamp: number;
+          senderId: string; messageId: string;
+        }>;
+      };
+      for (const msg of messages) {
+        lsMessageBuffer.push({
+          id: msg.messageId || `ls-${msg.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+          sender: 'contact',
+          content: msg.text,
+          contentType: msg.text && msg.text !== '[media]' ? 'text' : 'image',
+          timestamp: msg.timestamp,
+          rawData: { senderId: msg.senderId, threadId: msg.threadId, source: 'lightspeed' },
+        });
+      }
+    }) as EventListener);
+
+    // =========================================================================
+    // STATUS POPOVER (always visible)
+    // =========================================================================
+
+    // Mount the popover root ONCE and never unmount it.
+    // Visibility is controlled by rendering null vs the component.
+    let popoverRoot: ReturnType<typeof createRoot> | null = null;
+    let popoverVisible = false;
+
+    const statusPopoverUi = await createShadowRootUi(ctx, {
+      name: 'replier-status',
+      position: 'overlay',
+      anchor: 'body',
+      onMount: (container) => {
+        if (!popoverRoot) {
+          popoverRoot = createRoot(container);
+        }
+        renderPopover();
+        return () => {};
+      },
+    });
+    // Mount immediately — it stays mounted for the lifetime of the page
+    statusPopoverUi.mount();
+
+    function renderPopover(): void {
+      if (!popoverRoot) return;
+      if (!popoverVisible || !currentContactId) {
+        popoverRoot.render(null);
+        return;
+      }
+      import('@/components/StatusPopover').then(({ StatusPopover }) => {
+        if (!popoverRoot) return;
+        popoverRoot.render(
+          createElement(StatusPopover, {
+            status: popoverStatus,
+            contactName: currentContactUsername || currentContactName || '',
+            replyText,
+            replyId,
+            tone: replyTone,
+            errorMessage,
+            logs: [...activityLogs],
+            contactContext,
+            onSend: handleSend,
+            onRedo: handleRedo,
+            onToneChange: handleToneChange,
+            onEdit: handleEdit,
+            onDismiss: handleDismiss,
+            onRetry: handleRetry,
+            onGenerateNow: handleGenerateNow,
+            onStartFresh: handleStartFresh,
+            onRefine: handleRefine,
+          }),
+        );
+      });
+    }
+
+    function setStatus(
+      newStatus: PopoverStatus,
+      opts?: { text?: string; id?: string; tone?: ToneType; error?: string },
+    ): void {
+      popoverStatus = newStatus;
+      if (opts?.text !== undefined) replyText = opts.text;
+      if (opts?.id !== undefined) replyId = opts.id;
+      if (opts?.tone !== undefined) replyTone = opts.tone;
+      if (opts?.error !== undefined) errorMessage = opts.error;
+      renderPopover();
+    }
+
+    function showPopover(): void {
+      popoverVisible = true;
+      renderPopover();
+    }
+
+    function hidePopover(): void {
+      popoverVisible = false;
+      renderPopover();
+    }
+
+    // =========================================================================
+    // CONTACT DETECTION + AUTO-GENERATION
+    // =========================================================================
+
     async function detectAndSetContact(): Promise<void> {
-      const contactInfo = adapter!.getCurrentContactInfo();
-      if (!contactInfo) return;
+      addLog('Detecting contact...', 'info');
+
+      // Retry polling: Instagram's SPA doesn't update the DOM instantly
+      let contactInfo = adapter!.getCurrentContactInfo();
+      if (!contactInfo) {
+        addLog('DOM not ready, retrying...', 'warn');
+        for (let attempt = 0; attempt < 10; attempt++) {
+          await new Promise((r) => setTimeout(r, 300));
+          contactInfo = adapter!.getCurrentContactInfo();
+          if (contactInfo) break;
+        }
+      }
+      if (!contactInfo) {
+        addLog('Could not detect contact after 10 retries', 'error');
+        showPopover();
+        return;
+      }
+
+      const threadId = adapter!.getThreadId?.() || undefined;
 
       const response = (await browser.runtime.sendMessage({
         type: 'DETECT_CONTACT',
         platform: adapter!.name,
         platformUserId: contactInfo.platformUserId,
         name: contactInfo.name,
-      } satisfies ExtensionMessage)) as { ok: boolean; contact?: { id: string } };
+        threadId,
+      } satisfies ExtensionMessage)) as {
+        ok: boolean;
+        contact?: { id: string; historyScrubbed?: boolean };
+        isNew?: boolean;
+      };
 
       if (response?.ok && response.contact) {
         currentContactId = response.contact.id;
-        console.log('[Replier] Current contact:', currentContactId);
-        checkForPendingReply();
+        currentContactName = contactInfo.name;
+        currentContactUsername = contactInfo.platformUserId;
+        addLog(`Contact detected: @${contactInfo.platformUserId}${response.isNew ? ' (new)' : ''}`, 'success');
+
+        // Show toast for new contacts
+        if (response.isNew) {
+          showContactToast(contactInfo.platformUserId, contactInfo.name);
+        }
+
+        // Re-attach message observer
+        attachMessageObserver();
+
+        // Scrape visible DOM messages immediately — no scrolling required
+        await scrapeVisibleMessages();
+
+        // Fetch context for the memory panel
+        fetchContactContext();
+
+        // Show the popover and resolve the current status
+        showPopover();
+        await resolveContactStatus();
+
+        // Auto-scrub if needed
+        if (!response.contact.historyScrubbed) {
+          ctx.setTimeout(() => startAutoScrape(), 2000);
+        }
       }
     }
 
-    // Check for pre-generated reply when opening a chat
-    async function checkForPendingReply(): Promise<void> {
+    async function fetchContactContext(): Promise<void> {
+      if (!currentContactId) return;
+      const res = (await browser.runtime.sendMessage({
+        type: 'GET_CONTACT_CONTEXT',
+        contactId: currentContactId,
+      } satisfies ExtensionMessage)) as { ok: boolean; context?: import('@/components/StatusPopover').ContactContext };
+      if (res?.ok && res.context) {
+        contactContext = res.context;
+        renderPopover();
+      }
+    }
+
+    /**
+     * Query the background for the full status of the current contact.
+     * This determines whether to show idle, ready, or auto-trigger generation.
+     */
+    async function resolveContactStatus(): Promise<void> {
       if (!currentContactId) return;
 
+      addLog('Checking contact status...', 'info');
+
       const response = (await browser.runtime.sendMessage({
-        type: 'GET_PENDING_REPLY',
+        type: 'GET_CONTACT_STATUS',
         contactId: currentContactId,
       } satisfies ExtensionMessage)) as {
         ok: boolean;
-        reply?: { id: string; replyText: string; tone: string } | null;
+        lastMessageSender?: 'user' | 'contact' | null;
+        isActive?: boolean;
+        hasMessages?: boolean;
+        pendingReply?: { id: string; replyText: string; tone: string } | null;
+        preferredTone?: ToneType;
       };
 
-      if (response?.ok && response.reply) {
-        showPopover(response.reply.replyText, response.reply.id, response.reply.tone);
+      if (!response?.ok) {
+        addLog('Failed to get contact status', 'error');
+        setStatus('idle');
+        return;
       }
+
+      addLog(`Status: active=${response.isActive}, lastMsg=${response.lastMessageSender || 'none'}, pending=${!!response.pendingReply}`, 'info');
+
+      // If there's a pending reply ready, show it in the popover (don't auto-fill input)
+      if (response.pendingReply && response.pendingReply.replyText) {
+        addLog('Found pending reply, showing it', 'success');
+        setStatus('ready', {
+          text: response.pendingReply.replyText,
+          id: response.pendingReply.id,
+          tone: (response.pendingReply.tone as ToneType) || 'default',
+        });
+        return;
+      }
+
+      // If the last message is from the contact and the contact is active → auto-generate
+      if (
+        response.lastMessageSender === 'contact' &&
+        response.isActive &&
+        response.hasMessages
+      ) {
+        addLog('Last message from contact — auto-generating reply', 'info');
+        setStatus('generating');
+
+        await browser.runtime.sendMessage({
+          type: 'GENERATE_REPLY',
+          contactId: currentContactId,
+          tone: response.preferredTone || 'default',
+        } satisfies ExtensionMessage);
+        return;
+      }
+
+      if (!response.isActive) {
+        addLog('Contact is inactive. Activate in side panel to enable auto-reply.', 'warn');
+      } else if (response.lastMessageSender === 'user') {
+        addLog('You sent the last message. Waiting for their reply.', 'info');
+      } else if (!response.hasMessages) {
+        addLog('No messages yet. Send a message or click Generate Now.', 'info');
+      }
+
+      setStatus('idle');
     }
 
-    // Process a new incoming message
+    // =========================================================================
+    // MESSAGE OBSERVER
+    // =========================================================================
+
+    function attachMessageObserver(): void {
+      if (messageObserver) messageObserver.disconnect();
+      messageObserver = adapter!.observeNewMessages((msg) => {
+        processNewMessage(msg);
+      });
+    }
+
     async function processNewMessage(msg: ExtractedMessage): Promise<void> {
       if (!currentContactId) return;
-
       await browser.runtime.sendMessage({
         type: 'NEW_MESSAGE',
         contactId: currentContactId,
@@ -95,166 +345,444 @@ export default defineContentScript({
       } satisfies ExtensionMessage);
     }
 
-    // Start MutationObserver for DOM-based message detection
-    const observer = adapter.observeNewMessages((msg) => {
-      processNewMessage(msg);
-    });
+    // =========================================================================
+    // ACTION HANDLERS
+    // =========================================================================
 
-    // Create the popover UI via WXT Shadow DOM
-    let popoverRoot: ReturnType<typeof createRoot> | null = null;
-    let currentPopoverState: {
-      text: string;
-      replyId: string;
-      tone: string;
-    } | null = null;
+    async function handleSend(text: string, rid: string): Promise<void> {
+      // Always clear and insert fresh — prevents duplicates
+      adapter!.insertTextIntoInput(text);
 
-    const ui = await createShadowRootUi(ctx, {
-      name: 'replier-popover',
+      // Small delay to let Lexical sync, then send
+      await new Promise((r) => setTimeout(r, 100));
+      adapter!.triggerSend?.();
+
+      await browser.runtime.sendMessage({
+        type: 'ACCEPT_REPLY',
+        replyId: rid,
+        editedText: text,
+      } satisfies ExtensionMessage);
+
+      addLog('Reply sent!', 'success');
+      setStatus('idle');
+    }
+
+    async function handleRedo(): Promise<void> {
+      if (!currentContactId) return;
+      // Clear the input
+      const input = adapter!.getInputBox();
+      if (input) {
+        input.focus();
+        document.execCommand('selectAll', false);
+        document.execCommand('delete', false);
+      }
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone,
+      } satisfies ExtensionMessage);
+    }
+
+    async function handleToneChange(tone: string): Promise<void> {
+      if (!currentContactId) return;
+      const input = adapter!.getInputBox();
+      if (input) {
+        input.focus();
+        document.execCommand('selectAll', false);
+        document.execCommand('delete', false);
+      }
+      replyTone = tone as ToneType;
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: tone as ToneType,
+      } satisfies ExtensionMessage);
+    }
+
+    function handleEdit(): void {
+      adapter!.getInputBox()?.focus();
+    }
+
+    function handleDismiss(): void {
+      if (replyId) {
+        browser.runtime.sendMessage({
+          type: 'DISCARD_REPLY',
+          replyId,
+        } satisfies ExtensionMessage);
+      }
+      // Clear input
+      const input = adapter!.getInputBox();
+      if (input) {
+        input.focus();
+        document.execCommand('selectAll', false);
+        document.execCommand('delete', false);
+      }
+      // Back to idle — not hidden
+      setStatus('idle');
+    }
+
+    async function handleRetry(): Promise<void> {
+      if (!currentContactId) return;
+      addLog('Retrying generation...', 'info');
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone,
+      } satisfies ExtensionMessage);
+    }
+
+    async function handleGenerateNow(): Promise<void> {
+      if (!currentContactId) return;
+      addLog('Manual generation triggered', 'info');
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone || 'default',
+      } satisfies ExtensionMessage);
+    }
+
+    async function handleStartFresh(): Promise<void> {
+      if (!currentContactId) return;
+      addLog('Starting fresh conversation (ignoring history)', 'info');
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone || 'default',
+        freshStart: true,
+      } satisfies ExtensionMessage);
+    }
+
+    async function handleRefine(feedback: string): Promise<void> {
+      if (!currentContactId) return;
+      addLog(`Refining: "${feedback}"`, 'info');
+
+      // Store the feedback as a temporary user instruction, then regenerate
+      // We send the feedback as a special message that the generator can use
+      await browser.runtime.sendMessage({
+        type: 'NEW_MESSAGE',
+        contactId: currentContactId,
+        message: {
+          id: `refine-${Date.now()}`,
+          sender: 'user' as const,
+          content: `[Replier instruction: regenerate the reply but ${feedback}]`,
+          contentType: 'text' as const,
+          timestamp: Date.now(),
+        },
+      } satisfies ExtensionMessage);
+
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone || 'default',
+      } satisfies ExtensionMessage);
+    }
+
+    // =========================================================================
+    // CONTACT TOAST
+    // =========================================================================
+
+    let toastRoot: ReturnType<typeof createRoot> | null = null;
+    const toastUi = await createShadowRootUi(ctx, {
+      name: 'replier-toast',
       position: 'overlay',
-      anchor: () => adapter.getPopoverAnchorElement()!,
-      onMount: (container, shadow) => {
-        // Import React lazily to keep initial load fast
-        const root = createRoot(container);
-        popoverRoot = root;
-        renderPopover(root, shadow);
-        return () => root.unmount();
+      anchor: 'body',
+      onMount: (container) => {
+        if (!toastRoot) toastRoot = createRoot(container);
+        return () => { toastRoot?.unmount(); toastRoot = null; };
       },
     });
 
-    function renderPopover(
-      root: ReturnType<typeof createRoot>,
-      shadow: ShadowRoot,
-    ): void {
-      // Dynamic import for React component to keep content script lean
-      import('@/components/ReplyPopover').then(({ ReplyPopover }) => {
-        root.render(
-          ReplyPopover({
-            state: currentPopoverState,
-            onSend: handleSend,
-            onRedo: handleRedo,
-            onToneChange: handleToneChange,
-            onDismiss: handleDismiss,
-            onEdit: handleEdit,
-          }),
-        );
-      });
-    }
-
-    function showPopover(text: string, replyId: string, tone: string): void {
-      currentPopoverState = { text, replyId, tone };
-      ui.mount();
-      if (popoverRoot) {
-        import('@/components/ReplyPopover').then(({ ReplyPopover }) => {
-          popoverRoot!.render(
-            ReplyPopover({
-              state: currentPopoverState,
-              onSend: handleSend,
-              onRedo: handleRedo,
-              onToneChange: handleToneChange,
-              onDismiss: handleDismiss,
-              onEdit: handleEdit,
+    function showContactToast(username: string, displayName: string): void {
+      toastUi.mount();
+      if (toastRoot) {
+        import('@/components/ContactToast').then(({ ContactToast }) => {
+          toastRoot!.render(
+            createElement(ContactToast, {
+              username,
+              displayName,
+              onConfigure: () => {
+                browser.runtime.sendMessage({ type: 'GET_ALL_CONTACTS' } satisfies ExtensionMessage);
+                toastUi.remove();
+              },
+              onDismiss: () => toastUi.remove(),
             }),
           );
         });
       }
     }
 
-    function hidePopover(): void {
-      currentPopoverState = null;
-      ui.remove();
+    // =========================================================================
+    // SCRAPE OVERLAY
+    // =========================================================================
+
+    let scrapeRoot: ReturnType<typeof createRoot> | null = null;
+    const scrapeUi = await createShadowRootUi(ctx, {
+      name: 'replier-scrape',
+      position: 'overlay',
+      anchor: 'body',
+      onMount: (container) => {
+        if (!scrapeRoot) scrapeRoot = createRoot(container);
+        return () => { scrapeRoot?.unmount(); scrapeRoot = null; };
+      },
+    });
+
+    function updateScrapeOverlay(count: number, isComplete: boolean): void {
+      if (!scrapeRoot) return;
+      import('@/components/ScrapeOverlay').then(({ ScrapeOverlay }) => {
+        scrapeRoot!.render(
+          createElement(ScrapeOverlay, {
+            messageCount: count,
+            isComplete,
+            onCancel: () => {
+              scrapeAbortController?.abort();
+              scrapeUi.remove();
+            },
+          }),
+        );
+      });
     }
 
-    async function handleSend(text: string, replyId: string): Promise<void> {
-      adapter!.insertTextIntoInput(text);
-      await browser.runtime.sendMessage({
-        type: 'ACCEPT_REPLY',
-        replyId,
-        editedText: text,
-      } satisfies ExtensionMessage);
-      hidePopover();
-    }
+    // =========================================================================
+    // HISTORY SCRAPING
+    // =========================================================================
 
-    async function handleRedo(): Promise<void> {
-      if (!currentContactId || !currentPopoverState) return;
-      await browser.runtime.sendMessage({
-        type: 'GENERATE_REPLY',
-        contactId: currentContactId,
-        tone: currentPopoverState.tone as import('@/types/contact').ToneType,
-      } satisfies ExtensionMessage);
-    }
-
-    async function handleToneChange(tone: string): Promise<void> {
+    /**
+     * Scrape all visible messages from the DOM on chat open.
+     * This is the primary detection method — no scrolling needed.
+     */
+    async function scrapeVisibleMessages(): Promise<void> {
       if (!currentContactId) return;
-      await browser.runtime.sendMessage({
-        type: 'GENERATE_REPLY',
+      const container = adapter!.getMessageContainer();
+      if (!container) {
+        addLog('No message container found', 'warn');
+        return;
+      }
+      const messages = adapter!.extractMessages(container);
+      if (messages.length === 0) {
+        addLog('No visible messages to scrape', 'info');
+        return;
+      }
+
+      const response = (await browser.runtime.sendMessage({
+        type: 'SCRAPE_MESSAGES',
         contactId: currentContactId,
-        tone: tone as import('@/types/contact').ToneType,
-      } satisfies ExtensionMessage);
+        messages,
+        source: 'dom',
+      } satisfies ExtensionMessage)) as { ok: boolean; newCount?: number };
+
+      const newCount = response?.newCount || 0;
+      addLog(`Scraped ${messages.length} visible messages (${newCount} new)`, 'success');
+
+      // Reconcile: mark ghost messages (deleted or never-sent) as unverified
+      const reconcileRes = (await browser.runtime.sendMessage({
+        type: 'RECONCILE_MESSAGES',
+        contactId: currentContactId,
+        scrapedMessages: messages,
+      } satisfies ExtensionMessage)) as { ok: boolean; verified?: number; unverified?: number };
+
+      if (reconcileRes?.unverified) {
+        addLog(`Cleaned ${reconcileRes.unverified} ghost messages from context`, 'warn');
+      }
     }
 
-    function handleDismiss(): void {
-      if (currentPopoverState) {
-        browser.runtime.sendMessage({
-          type: 'DISCARD_REPLY',
-          replyId: currentPopoverState.replyId,
+    async function startAutoScrape(): Promise<void> {
+      if (!currentContactId || scrapeAbortController) return;
+      scrapeAbortController = new AbortController();
+      scrapedMessageCount = 0;
+
+      scrapeUi.mount();
+      updateScrapeOverlay(0, false);
+
+      try {
+        if (lsMessageBuffer.length > 0) {
+          await sendScrapeBatch(lsMessageBuffer.splice(0));
+        }
+
+        let noNewCount = 0;
+        for (let i = 0; i < 30; i++) {
+          if (scrapeAbortController.signal.aborted) break;
+          const hadMore = await adapter!.scrollToLoadMore();
+          await new Promise((r) => setTimeout(r, 500));
+
+          if (lsMessageBuffer.length > 0) {
+            await sendScrapeBatch(lsMessageBuffer.splice(0));
+            noNewCount = 0;
+          } else if (!hadMore) {
+            noNewCount++;
+            if (noNewCount >= 3) break;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        const container = adapter!.getMessageContainer();
+        if (container) {
+          const domMessages = adapter!.extractMessages(container);
+          if (domMessages.length > 0) await sendScrapeBatch(domMessages);
+        }
+
+        await browser.runtime.sendMessage({
+          type: 'SCRAPE_COMPLETE',
+          contactId: currentContactId!,
+          totalMessages: scrapedMessageCount,
         } satisfies ExtensionMessage);
+
+        updateScrapeOverlay(scrapedMessageCount, true);
+        setTimeout(() => scrapeUi.remove(), 3500);
+      } catch (err) {
+        console.error('[Replier] Scrape error:', err);
+        await browser.runtime.sendMessage({
+          type: 'SCRAPE_ERROR',
+          contactId: currentContactId!,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        } satisfies ExtensionMessage);
+        scrapeUi.remove();
+      } finally {
+        scrapeAbortController = null;
       }
-      hidePopover();
     }
 
-    function handleEdit(text: string): void {
-      if (currentPopoverState) {
-        currentPopoverState = { ...currentPopoverState, text };
+    async function sendScrapeBatch(messages: ExtractedMessage[]): Promise<void> {
+      if (!currentContactId || messages.length === 0) return;
+      const response = (await browser.runtime.sendMessage({
+        type: 'SCRAPE_MESSAGES',
+        contactId: currentContactId,
+        messages,
+        source: 'api',
+      } satisfies ExtensionMessage)) as { ok: boolean; newCount?: number };
+
+      if (response?.ok && response.newCount) {
+        scrapedMessageCount += response.newCount;
+        updateScrapeOverlay(scrapedMessageCount, false);
       }
     }
 
-    // Listen for messages from service worker
+    // =========================================================================
+    // MESSAGE LISTENER (from service worker)
+    // =========================================================================
+
     browser.runtime.onMessage.addListener((message: ExtensionMessage) => {
       switch (message.type) {
         case 'REPLY_READY':
           if (message.contactId === currentContactId) {
-            showPopover(message.text, message.replyId, message.tone);
+            addLog('Reply generated successfully!', 'success');
+            setStatus('ready', {
+              text: message.text,
+              id: message.replyId,
+              tone: message.tone,
+            });
+            // Don't auto-fill input — user clicks Send to insert + send
           }
           break;
+
         case 'REPLY_GENERATING':
           if (message.contactId === currentContactId) {
-            // Show loading state in popover
-            currentPopoverState = {
-              text: '',
-              replyId: '',
-              tone: currentPopoverState?.tone || 'default',
-            };
-            ui.mount();
+            const count = message.messageCount || 0;
+            const summary = message.hasSummary ? 'yes' : 'no';
+            addLog(`Sending ${count} messages to LLM (summary: ${summary})`, 'info');
+            addLog('LLM is generating...', 'info');
+            setStatus('generating');
           }
           break;
+
         case 'GENERATION_ERROR':
           if (message.contactId === currentContactId) {
-            console.error('[Replier] Generation error:', message.error);
-            hidePopover();
+            addLog(`Error: ${message.error}`, 'error');
+            setStatus('error', { error: message.error });
+          }
+          break;
+
+        case 'START_SCRAPE':
+          if (message.contactId === currentContactId) {
+            startAutoScrape();
           }
           break;
       }
     });
 
-    // Handle SPA navigation (Instagram changes chats without page reload)
+    // =========================================================================
+    // SPA NAVIGATION
+    // =========================================================================
+
     ctx.addEventListener(
       window,
       'wxt:locationchange' as keyof WindowEventMap,
       (() => {
         if (!adapter.matchUrl(window.location.href)) return;
-        // Re-detect contact when URL changes
+        // Reset all state for the new conversation
+        currentContactId = null;
+        currentContactName = '';
+        currentContactUsername = '';
+        contactContext = null;
         hidePopover();
-        ctx.setTimeout(detectAndSetContact, 500);
+        lsMessageBuffer.length = 0;
+        replyText = '';
+        replyId = '';
+        errorMessage = '';
+        popoverStatus = 'idle';
+        // Short initial delay — detectAndSetContact has its own retry loop
+        ctx.setTimeout(detectAndSetContact, 200);
       }) as EventListener,
     );
 
+    // Also detect thread clicks on the left panel.
+    // Instagram doesn't always change the URL when switching threads,
+    // so wxt:locationchange alone is unreliable. We listen for clicks
+    // on the thread list and re-detect after a short delay.
+    let lastDetectedUrl = '';
+    function setupThreadClickListener(): void {
+      const threadList = document.querySelector(
+        'div[aria-label="Thread list"][role="navigation"], [data-pagelet="IGDInboxThreadListScrollableAreaPagelet"]',
+      );
+      if (threadList) {
+        threadList.addEventListener('click', () => {
+          // Debounce: only trigger if URL changed or enough time passed
+          setTimeout(() => {
+            const currentUrl = window.location.href;
+            if (currentUrl !== lastDetectedUrl) {
+              lastDetectedUrl = currentUrl;
+              // Reset state for new conversation
+              currentContactId = null;
+              currentContactName = '';
+              currentContactUsername = '';
+              contactContext = null;
+              hidePopover();
+              lsMessageBuffer.length = 0;
+              replyText = '';
+              replyId = '';
+              errorMessage = '';
+              popoverStatus = 'idle';
+              detectAndSetContact();
+            }
+          }, 600);
+        });
+        console.log('[Replier] Thread list click listener attached');
+      }
+    }
+
     // Initial contact detection
     ctx.setTimeout(detectAndSetContact, 1000);
+    // Attach thread click listener after a brief delay for DOM to be ready
+    ctx.setTimeout(setupThreadClickListener, 2000);
 
-    // Clean up on extension invalidation
+    // Clean up
     ctx.onInvalidated(() => {
-      observer.disconnect();
+      messageObserver?.disconnect();
+      scrapeAbortController?.abort();
       hidePopover();
+      toastUi.remove();
+      scrapeUi.remove();
     });
   },
 });

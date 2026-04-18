@@ -56,6 +56,12 @@ export async function getGeneratingReply(
     .first();
 }
 
+export async function getReplyById(
+  id: string,
+): Promise<PendingReply | undefined> {
+  return db.pendingReplies.get(id);
+}
+
 export async function acceptReply(
   id: string,
   editedText?: string,

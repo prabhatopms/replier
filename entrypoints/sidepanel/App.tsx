@@ -16,7 +16,7 @@ export function App() {
   const navigate = (p: Page) => setPage(p);
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -40,7 +40,7 @@ export function App() {
       </header>
 
       {/* Page Content */}
-      <main className="p-4">
+      <main className="p-4 flex-1">
         {page.name === 'dashboard' && (
           <Dashboard
             onCreateContact={() =>
@@ -71,6 +71,32 @@ export function App() {
           />
         )}
       </main>
+
+      {/* Sticky Support Footer */}
+      <footer className="sticky bottom-0 z-10">
+        <div
+          className="mx-3 mb-3 rounded-2xl overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 50%, #ef4444 100%)',
+          }}
+        >
+          <a
+            href="https://buymeacoffee.com/replier"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-3 px-6 py-4 text-white hover:opacity-90 transition-opacity"
+          >
+            <span className="text-2xl">&#9749;</span>
+            <div className="text-left">
+              <div className="text-sm font-bold tracking-wide">Support Replier</div>
+              <div className="text-[11px] opacity-80">Buy me a coffee to keep this project alive</div>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60 ml-auto">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }

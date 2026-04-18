@@ -44,6 +44,7 @@ export function Settings({ onBack }: SettingsProps) {
     textingStyle: '',
   });
   const [model, setModel] = useState(DEFAULT_MODELS.claude);
+  const [customPrompt, setCustomPrompt] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -57,6 +58,7 @@ export function Settings({ onBack }: SettingsProps) {
       'geminiApiKey',
       'userProfile',
       'llmConfig',
+      'customSystemPrompt',
     ]);
     const storedKeys: Record<string, string> = {
       apiKey: (result.apiKey as string) || '',
@@ -75,6 +77,9 @@ export function Settings({ onBack }: SettingsProps) {
     if (config?.model) {
       setModel(config.model);
     }
+    if (result.customSystemPrompt) {
+      setCustomPrompt(result.customSystemPrompt as string);
+    }
   }
 
   function handleProviderChange(newProvider: LLMProviderType) {
@@ -90,7 +95,8 @@ export function Settings({ onBack }: SettingsProps) {
         apiKey: apiKeys.apiKey,
         geminiApiKey: apiKeys.geminiApiKey,
         userProfile,
-        llmConfig: { provider, model, maxTokens: 500 },
+        llmConfig: { provider, model, maxTokens: 512 },
+        customSystemPrompt: customPrompt,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -269,6 +275,37 @@ export function Settings({ onBack }: SettingsProps) {
               />
             </div>
           </div>
+        </section>
+
+        {/* System Prompt */}
+        <section>
+          <h3 className="text-sm font-semibold text-gray-800 mb-2">
+            System Prompt
+          </h3>
+          <p className="text-xs text-gray-500 mb-2">
+            Customize the instructions sent to the LLM. When set, this <strong>replaces</strong> the
+            default prompt entirely. Leave empty to use the built-in prompt.
+          </p>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder={`You text on Instagram DMs as the user. Keep replies SHORT (1-2 sentences max). Sound like a real person, not an AI.\n\nNever use formal phrases. Match the conversation vibe.\n\nOutput ONLY the message text. No quotes, no HTML.`}
+            rows={8}
+            className="
+              w-full px-3 py-2 rounded-lg border border-gray-300 text-xs
+              font-mono leading-relaxed
+              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+              resize-y
+            "
+          />
+          {customPrompt.trim() && (
+            <button
+              onClick={() => setCustomPrompt('')}
+              className="mt-1.5 text-xs text-red-500 hover:text-red-700 transition-colors"
+            >
+              Reset to default prompt
+            </button>
+          )}
         </section>
 
         {/* Save Button */}

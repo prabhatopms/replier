@@ -44,7 +44,7 @@ export const PROVIDER_LABELS: Record<LLMProviderType, string> = {
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
   provider: 'claude',
   model: 'claude-sonnet-4-20250514',
-  maxTokens: 500,
+  maxTokens: 512,
 };
 
 export const DEFAULT_MODELS: Record<LLMProviderType, string> = {
