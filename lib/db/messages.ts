@@ -72,6 +72,14 @@ export async function getMessageCount(contactId: string): Promise<number> {
   return db.messages.where('contactId').equals(contactId).count();
 }
 
+export async function getContactMessageCount(contactId: string): Promise<number> {
+  return db.messages
+    .where('contactId')
+    .equals(contactId)
+    .filter((m) => m.sender === 'contact' && m.verified !== false)
+    .count();
+}
+
 export async function getLastMessage(
   contactId: string,
 ): Promise<Message | undefined> {

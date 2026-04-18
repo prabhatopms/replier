@@ -282,10 +282,10 @@ export default defineContentScript({
       } satisfies ExtensionMessage)) as {
         ok: boolean;
         lastMessageSender?: 'user' | 'contact' | null;
-        lastContactMessageId?: string | null;
+        currentContactMessageCount?: number;
         isActive?: boolean;
         hasMessages?: boolean;
-        pendingReply?: { id: string; replyText: string; tone: string; triggerMessageId?: string } | null;
+        pendingReply?: { id: string; replyText: string; tone: string; contextMessageCount?: number } | null;
         preferredTone?: ToneType;
       };
 
@@ -303,23 +303,31 @@ export default defineContentScript({
 
       addLog(`Status: active=${response.isActive}, lastMsg=${response.lastMessageSender || 'none'}, pending=${!!response.pendingReply}`, 'info');
 
-      // Check if there's a cached pending reply, but first verify it's still fresh.
-      // A reply is stale if a newer message from the contact arrived after it was generated.
+      // Check if there's a cached pending reply, but first verify the context
+      // hasn't changed since it was generated.
+      // We compare the count of contact messages at generation time vs now.
+      // Count is immune to ID format differences across storage paths.
       if (response.pendingReply && response.pendingReply.replyText) {
+        const cachedCount = response.pendingReply.contextMessageCount;
+        const currentCount = response.currentContactMessageCount ?? 0;
+
+        // If contextMessageCount wasn't recorded (old reply) fall back to showing it.
+        // If it was recorded and the current count is higher, new messages arrived.
         const isStale =
-          response.lastContactMessageId != null &&
-          response.pendingReply.triggerMessageId !== response.lastContactMessageId;
+          cachedCount !== undefined && currentCount > cachedCount;
 
         if (isStale) {
-          addLog('Pending reply is stale — new message arrived, regenerating', 'warn');
-          // Discard the outdated reply quietly
+          addLog(
+            `Context changed (${cachedCount}→${currentCount} contact msgs) — regenerating`,
+            'warn',
+          );
           await browser.runtime.sendMessage({
             type: 'DISCARD_REPLY',
             replyId: response.pendingReply.id,
           } satisfies ExtensionMessage);
           // Fall through to auto-generate below
         } else {
-          addLog('Found cached reply (context unchanged), showing it', 'success');
+          addLog('Context unchanged — showing cached reply', 'success');
           setStatus('ready', {
             text: response.pendingReply.replyText,
             id: response.pendingReply.id,

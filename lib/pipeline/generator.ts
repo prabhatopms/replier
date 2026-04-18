@@ -1,6 +1,6 @@
 import type { ToneType } from '@/types/contact';
 import { getContact, incrementMessageCount } from '@/lib/db/contacts';
-import { getRecentMessages } from '@/lib/db/messages';
+import { getRecentMessages, getContactMessageCount } from '@/lib/db/messages';
 import { createPendingReply, updateReplyText } from '@/lib/db/replies';
 import { getActiveProvider } from '@/lib/llm/provider';
 import { buildContext } from './context-builder';
@@ -22,11 +22,16 @@ export async function generateReply(
   const contact = await getContact(contactId);
   if (!contact || !contact.isActive) return null;
 
+  // Snapshot how many contact messages exist right now so we can detect
+  // stale cached replies later (if this count grows, context has changed).
+  const contextMessageCount = await getContactMessageCount(contactId);
+
   // Create a pending reply record
   const pendingReply = await createPendingReply(
     contactId,
     triggerMessageId,
     tone,
+    contextMessageCount,
   );
 
   try {

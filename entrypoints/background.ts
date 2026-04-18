@@ -16,7 +16,7 @@ import {
   storeMessage,
   getRecentMessages,
   getLastMessage,
-  getLastContactMessage,
+  getContactMessageCount,
   storeMessagesDeduped,
   reconcileMessages,
 } from '@/lib/db/messages';
@@ -206,16 +206,16 @@ async function handleMessage(
       const contact = await getContact(message.contactId);
       if (!contact) return { ok: false, error: 'Contact not found' };
 
-      const [lastMsg, lastContactMsg, pendingReply] = await Promise.all([
+      const [lastMsg, currentContactMessageCount, pendingReply] = await Promise.all([
         getLastMessage(message.contactId),
-        getLastContactMessage(message.contactId),
+        getContactMessageCount(message.contactId),
         getPendingReplyForContact(message.contactId),
       ]);
 
       return {
         ok: true,
         lastMessageSender: lastMsg?.sender || null,
-        lastContactMessageId: lastContactMsg?.id || null,
+        currentContactMessageCount,
         isActive: contact.isActive,
         hasMessages: !!lastMsg,
         pendingReply: pendingReply || null,

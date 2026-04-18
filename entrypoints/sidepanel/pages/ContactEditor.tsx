@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import type { Contact, ToneType } from '@/types/contact';
 import { ConversationGoal, GOAL_LABELS, TONE_LABELS, BUILT_IN_TONES, type BuiltInTone } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 
 interface ContactEditorProps {
   contactId?: string;
@@ -28,9 +35,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
   const [summarizing, setSummarizing] = useState(false);
 
   useEffect(() => {
-    if (contactId) {
-      loadContact(contactId);
-    }
+    if (contactId) loadContact(contactId);
   }, [contactId]);
 
   async function loadContact(id: string) {
@@ -39,10 +44,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
       const response = (await browser.runtime.sendMessage({
         type: 'GET_CONTACT',
         contactId: id,
-      } satisfies ExtensionMessage)) as {
-        ok: boolean;
-        contact?: Contact | null;
-      };
+      } satisfies ExtensionMessage)) as { ok: boolean; contact?: Contact | null };
       if (response?.ok && response.contact) {
         const c = response.contact;
         setForm({
@@ -67,10 +69,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
     try {
       await browser.runtime.sendMessage({
         type: 'SAVE_CONTACT',
-        contact: {
-          ...(contactId ? { id: contactId } : {}),
-          ...form,
-        },
+        contact: { ...(contactId ? { id: contactId } : {}), ...form },
       } satisfies ExtensionMessage);
       onSaved();
     } finally {
@@ -92,219 +91,173 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
   }
 
   if (loading) {
-    return <div className="text-sm text-gray-400 py-8 text-center">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+          <span className="text-xs text-gray-400">Loading contact...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={onBack}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          &larr; Back
-        </button>
-        <h2 className="text-base font-semibold text-gray-900">
-          {contactId ? 'Edit' : 'New'} Contact
+      {/* Page header */}
+      <div className="flex items-center gap-2 mb-5">
+        <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-500 -ml-1">
+          <ArrowLeft size={16} />
+        </Button>
+        <h2 className="text-sm font-semibold text-gray-900">
+          {contactId ? 'Edit Contact' : 'New Contact'}
         </h2>
       </div>
 
-      <div className="space-y-4">
-        {/* Name */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Display Name
-          </label>
-          <input
-            type="text"
-            value={form.displayName}
-            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-            placeholder="Sarah, Mike from gym, etc."
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-            "
-          />
-        </div>
+      <div className="space-y-7">
 
-        {/* Username */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Username / ID
-          </label>
-          <input
-            type="text"
-            value={form.platformUserId}
-            onChange={(e) =>
-              setForm({ ...form, platformUserId: e.target.value })
-            }
-            placeholder="instagram_handle"
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-            "
-          />
-        </div>
-
-        {/* Relationship */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Relationship
-          </label>
-          <input
-            type="text"
-            value={form.relationship}
-            onChange={(e) => setForm({ ...form, relationship: e.target.value })}
-            placeholder="crush, friend, colleague, tinder match..."
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-            "
-          />
-        </div>
-
-        {/* Goal */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Conversation Goal
-          </label>
-          <select
-            value={form.goal}
-            onChange={(e) =>
-              setForm({ ...form, goal: e.target.value as ConversationGoal })
-            }
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-            "
-          >
-            {Object.entries(GOAL_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Goal Description */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Goal Details (optional)
-          </label>
-          <input
-            type="text"
-            value={form.goalDescription}
-            onChange={(e) =>
-              setForm({ ...form, goalDescription: e.target.value })
-            }
-            placeholder="Want to ask her out this weekend..."
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-            "
-          />
-        </div>
-
-        {/* Personal Notes */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Personal Notes
-          </label>
-          <textarea
-            value={form.personalNotes}
-            onChange={(e) =>
-              setForm({ ...form, personalNotes: e.target.value })
-            }
-            placeholder="Likes hiking, has a dog named Max, sarcastic humor, works in marketing..."
-            rows={4}
-            className="
-              w-full px-3 py-2 rounded-lg border border-gray-300 text-sm
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-              resize-none
-            "
-          />
-        </div>
-
-        {/* Default Tone */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Default Tone
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {TONES.map((tone) => (
-              <button
-                key={tone}
-                onClick={() => setForm({ ...form, preferredTone: tone })}
-                className={`
-                  px-3 py-1.5 rounded-full text-xs font-medium transition-all
-                  ${
-                    form.preferredTone === tone
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }
-                `}
-              >
-                {TONE_LABELS[tone as BuiltInTone]}
-              </button>
-            ))}
+        {/* ── Identity ── */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Identity</p>
+          <div className="space-y-2">
+            <Label htmlFor="displayName">Display Name</Label>
+            <Input
+              id="displayName"
+              value={form.displayName}
+              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              placeholder="Sarah, Mike from gym, etc."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="platformUserId">Username / ID</Label>
+            <Input
+              id="platformUserId"
+              value={form.platformUserId}
+              onChange={(e) => setForm({ ...form, platformUserId: e.target.value })}
+              placeholder="instagram_handle"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="relationship">Relationship</Label>
+            <Input
+              id="relationship"
+              value={form.relationship}
+              onChange={(e) => setForm({ ...form, relationship: e.target.value })}
+              placeholder="crush, friend, colleague, tinder match..."
+            />
           </div>
         </div>
 
-        {/* Active Toggle */}
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <span className="text-sm font-medium text-gray-700">
-              Auto-generate replies
-            </span>
-            <p className="text-xs text-gray-500">
+        {/* ── Divider ── */}
+        <div className="h-px bg-gray-100" />
+
+        {/* ── Goal ── */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Conversation Goal</p>
+          <div className="space-y-2">
+            <Label htmlFor="goal">Goal</Label>
+            <select
+              id="goal"
+              value={form.goal}
+              onChange={(e) => setForm({ ...form, goal: e.target.value as ConversationGoal })}
+              className="flex h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400"
+            >
+              {Object.entries(GOAL_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="goalDescription">Goal Details <span className="font-normal text-gray-400">(optional)</span></Label>
+            <Input
+              id="goalDescription"
+              value={form.goalDescription}
+              onChange={(e) => setForm({ ...form, goalDescription: e.target.value })}
+              placeholder="Want to ask her out this weekend..."
+            />
+          </div>
+        </div>
+
+        {/* ── Divider ── */}
+        <div className="h-px bg-gray-100" />
+
+        {/* ── Personal Notes ── */}
+        <div className="space-y-2">
+          <Label htmlFor="personalNotes">Personal Notes</Label>
+          <p className="text-[11px] text-gray-400">Context the AI always gets when replying to this person.</p>
+          <Textarea
+            id="personalNotes"
+            value={form.personalNotes}
+            onChange={(e) => setForm({ ...form, personalNotes: e.target.value })}
+            placeholder="Likes hiking, has a dog named Max, sarcastic humor, works in marketing..."
+            rows={4}
+          />
+        </div>
+
+        {/* ── Divider ── */}
+        <div className="h-px bg-gray-100" />
+
+        {/* ── Tone ── */}
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Default Tone</p>
+          <div className="flex flex-wrap gap-2">
+            {TONES.map((tone) => {
+              const isSelected = form.preferredTone === tone;
+              return (
+                <button
+                  key={tone}
+                  onClick={() => setForm({ ...form, preferredTone: tone })}
+                  className={cn(
+                    'px-2.5 py-1 rounded-full text-xs font-medium transition-all',
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  )}
+                >
+                  {TONE_LABELS[tone as BuiltInTone]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Divider ── */}
+        <div className="h-px bg-gray-100" />
+
+        {/* ── Auto-pilot Toggle ── */}
+        <div className="flex items-center justify-between py-3">
+          <div className="flex-1 min-w-0 pr-4">
+            <p className="text-sm font-medium text-gray-800">Auto-generate replies</p>
+            <p className="text-xs text-gray-400 mt-0.5">
               Automatically generate a reply when this person messages you
             </p>
           </div>
-          <button
-            onClick={() => setForm({ ...form, isActive: !form.isActive })}
-            className={`
-              relative w-11 h-6 rounded-full transition-colors
-              ${form.isActive ? 'bg-indigo-600' : 'bg-gray-300'}
-            `}
-          >
-            <span
-              className={`
-                absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full
-                shadow transition-transform
-                ${form.isActive ? 'translate-x-5' : ''}
-              `}
-            />
-          </button>
+          <Switch
+            checked={form.isActive}
+            onCheckedChange={(checked) => setForm({ ...form, isActive: checked })}
+          />
         </div>
 
-        {/* Summarize Button (only for existing contacts) */}
+        {/* ── Actions ── */}
         {contactId && (
-          <button
+          <Button
+            variant="outline"
             onClick={handleSummarize}
             disabled={summarizing}
-            className="
-              w-full px-3 py-2 rounded-lg text-sm font-medium
-              border border-gray-300 text-gray-700 hover:bg-gray-50
-              disabled:opacity-50 transition-colors
-            "
+            className="w-full gap-2"
           >
+            <RefreshCw size={13} className={summarizing ? 'animate-spin' : ''} />
             {summarizing ? 'Summarizing...' : 'Re-summarize Conversation'}
-          </button>
+          </Button>
         )}
 
-        {/* Save Button */}
-        <button
+        <Button
           onClick={handleSave}
           disabled={saving || !form.displayName}
-          className="
-            w-full px-3 py-2.5 rounded-lg text-sm font-medium
-            bg-indigo-600 text-white hover:bg-indigo-700
-            disabled:opacity-50 disabled:cursor-not-allowed
-            transition-colors
-          "
+          className="w-full"
         >
           {saving ? 'Saving...' : contactId ? 'Save Changes' : 'Create Contact'}
-        </button>
+        </Button>
+
       </div>
     </div>
   );

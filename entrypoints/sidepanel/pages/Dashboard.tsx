@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
+import { UserCircle, MessageCircle, Pencil, Trash2, Plus } from 'lucide-react';
 import type { Contact } from '@/types/contact';
 import { GOAL_LABELS, getToneDisplayName } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 
 interface DashboardProps {
   onCreateContact: () => void;
@@ -48,108 +52,133 @@ export function Dashboard({
     setContacts((prev) => prev.filter((c) => c.id !== contactId));
   }
 
+  function getInitials(name: string): string {
+    return name
+      .split(' ')
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase();
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-gray-400 text-sm">Loading contacts...</div>
+      <div className="flex items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+          <span className="text-xs text-gray-400">Loading contacts...</span>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-gray-900">Contacts</h2>
-        <button
-          onClick={onCreateContact}
-          className="
-            px-3 py-1.5 rounded-lg text-sm font-medium
-            bg-indigo-600 text-white hover:bg-indigo-700 transition-colors
-          "
-        >
-          + New Contact
-        </button>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Contacts</h2>
+          {contacts.length > 0 && (
+            <p className="text-xs text-gray-400 mt-0.5">{contacts.length} contact{contacts.length !== 1 ? 's' : ''}</p>
+          )}
+        </div>
+        <Button size="sm" onClick={onCreateContact} className="gap-1">
+          <Plus size={13} />
+          New Contact
+        </Button>
       </div>
 
       {contacts.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-gray-400 text-sm mb-2">No contacts yet</div>
-          <p className="text-gray-400 text-xs">
-            Open a chat on Instagram and create a contact persona to get started.
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-3">
+            <UserCircle size={24} className="text-indigo-400" />
+          </div>
+          <p className="text-sm font-medium text-gray-600 mb-1">No contacts yet</p>
+          <p className="text-xs text-gray-400 max-w-50 leading-relaxed">
+            Open a chat on Instagram and Replier will detect the contact automatically.
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {contacts.map((contact) => (
-            <div
-              key={contact.id}
-              className="
-                border border-gray-200 rounded-lg p-3
-                hover:border-gray-300 transition-colors
-              "
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-gray-900 truncate">
-                      {contact.displayName}
-                    </h3>
-                    <span
-                      className={`
-                        inline-block w-2 h-2 rounded-full
-                        ${contact.isActive ? 'bg-green-400' : 'bg-gray-300'}
-                      `}
-                      title={contact.isActive ? 'Active' : 'Inactive'}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-gray-500">
-                      @{contact.platformUserId}
-                    </span>
-                    <span className="text-xs text-gray-300">|</span>
-                    <span className="text-xs text-gray-500 capitalize">
-                      {contact.platform}
+            <Card key={contact.id} className="hover:shadow-md transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-start gap-3">
+                  {/* Avatar */}
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-indigo-600">
+                      {getInitials(contact.displayName)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    {contact.relationship && (
-                      <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">
-                        {contact.relationship}
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-gray-900 truncate">
+                        {contact.displayName}
+                      </h3>
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                          contact.isActive
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        <span
+                          className={`w-1 h-1 rounded-full ${
+                            contact.isActive ? 'bg-green-500' : 'bg-gray-400'
+                          }`}
+                        />
+                        {contact.isActive ? 'Active' : 'Paused'}
                       </span>
-                    )}
-                    <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full">
-                      {GOAL_LABELS[contact.goal]}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                      {getToneDisplayName(contact.preferredTone)}
-                    </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      @{contact.platformUserId} · {contact.platform}
+                    </p>
                   </div>
                 </div>
-              </div>
+              </CardHeader>
 
-              <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
-                <button
+              <CardContent className="pt-0 pb-5">
+                <div className="flex flex-wrap gap-2">
+                  {contact.relationship && (
+                    <Badge variant="blue">{contact.relationship}</Badge>
+                  )}
+                  <Badge variant="purple">{GOAL_LABELS[contact.goal]}</Badge>
+                  <Badge variant="gray">{getToneDisplayName(contact.preferredTone)}</Badge>
+                </div>
+              </CardContent>
+
+              <CardFooter>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => onEditContact(contact.id)}
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1"
                 >
-                  Edit Persona
-                </button>
-                <span className="text-gray-200">|</span>
-                <button
+                  <Pencil size={11} />
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => onViewConversation(contact.id)}
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1"
                 >
-                  View History
-                </button>
-                <span className="text-gray-200">|</span>
-                <button
+                  <MessageCircle size={11} />
+                  History
+                </Button>
+                <div className="flex-1" />
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => handleDelete(contact.id)}
-                  className="text-xs text-red-500 hover:text-red-600 font-medium"
+                  className="text-gray-400 hover:text-red-600 hover:bg-red-50 gap-1"
                 >
+                  <Trash2 size={11} />
                   Delete
-                </button>
-              </div>
-            </div>
+                </Button>
+              </CardFooter>
+            </Card>
           ))}
         </div>
       )}

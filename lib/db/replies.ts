@@ -7,6 +7,7 @@ export async function createPendingReply(
   contactId: string,
   triggerMessageId: string,
   tone: ToneType,
+  contextMessageCount?: number,
 ): Promise<PendingReply> {
   // Discard any existing pending replies for this contact
   await db.pendingReplies
@@ -22,6 +23,7 @@ export async function createPendingReply(
     triggerMessageId,
     status: 'generating',
     createdAt: Date.now(),
+    contextMessageCount,
   };
 
   await db.pendingReplies.put(reply);

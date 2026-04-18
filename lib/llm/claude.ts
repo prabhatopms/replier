@@ -51,8 +51,16 @@ export const claudeProvider: LLMProvider = {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Claude API error (${response.status}): ${error}`);
+      const errorText = await response.text();
+      let message = `Claude error (${response.status})`;
+      try {
+        const parsed = JSON.parse(errorText) as { error?: { message?: string; type?: string } };
+        if (parsed.error?.message) message = parsed.error.message;
+        else if (parsed.error?.type) message = parsed.error.type.replace(/_/g, ' ');
+      } catch {
+        if (errorText.length < 300) message = errorText;
+      }
+      throw new Error(message);
     }
 
     const data = (await response.json()) as {

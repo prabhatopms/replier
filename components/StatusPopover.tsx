@@ -58,6 +58,43 @@ interface StatusPopoverProps {
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
+type ErrorCategory = 'auth' | 'rate_limit' | 'overloaded' | 'blocked' | 'empty' | 'network' | 'unknown';
+
+function categorizeError(msg: string): ErrorCategory {
+  const m = msg.toLowerCase();
+  if (m.includes('api key') || m.includes('401') || m.includes('authentication') || m.includes('invalid_api_key') || m.includes('not configured') || m.includes('not set')) return 'auth';
+  if (m.includes('429') || m.includes('rate limit') || m.includes('quota') || m.includes('rate_limit')) return 'rate_limit';
+  if (m.includes('529') || m.includes('overload') || m.includes('503') || m.includes('overloaded')) return 'overloaded';
+  if (m.includes('safety') || m.includes('blocked') || m.includes('recitation')) return 'blocked';
+  if (m.includes('empty response') || m.includes('empty')) return 'empty';
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('net::')) return 'network';
+  return 'unknown';
+}
+
+function getErrorTitle(msg: string): string {
+  switch (categorizeError(msg)) {
+    case 'auth': return 'API key error';
+    case 'rate_limit': return 'Rate limit exceeded';
+    case 'overloaded': return 'AI service overloaded';
+    case 'blocked': return 'Content blocked by safety filter';
+    case 'empty': return 'AI returned empty response';
+    case 'network': return 'Network error';
+    default: return 'Generation failed';
+  }
+}
+
+function getErrorHint(msg: string): string {
+  switch (categorizeError(msg)) {
+    case 'auth': return 'Open the Replier side panel → Settings and update your API key.';
+    case 'rate_limit': return 'Wait 30–60 seconds then retry. Or check your API quota in the provider dashboard.';
+    case 'overloaded': return 'The AI service is busy. Retry in a moment, or switch to a faster model in Settings.';
+    case 'blocked': return 'Try a milder style like Casual or Funny. Also simplify Personal Notes if they contain sensitive content.';
+    case 'empty': return 'This is usually transient. Retry or try a different style.';
+    case 'network': return 'Check your internet connection and retry.';
+    default: return 'Try a different style, or check Settings if this keeps happening.';
+  }
+}
+
 const LOG_COLORS = {
   info: 'text-gray-400',
   success: 'text-green-500',
@@ -496,13 +533,30 @@ export function StatusPopover({
 
             {/* --- ERROR STATE --- */}
             {status === 'error' && (
-              <div className="px-6 py-5">
-                <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                  <p className="text-sm text-red-700 font-medium mb-1">Generation failed</p>
-                  <p className="text-xs text-red-500 leading-relaxed">{errorMessage || 'Check your API key in the side panel settings.'}</p>
+              <div className="px-6 py-5 space-y-4">
+                <div className="p-4 bg-red-50 rounded-xl border border-red-100 space-y-1.5">
+                  <p className="text-sm text-red-700 font-medium">{getErrorTitle(errorMessage)}</p>
+                  <p className="text-xs text-red-500 leading-relaxed font-mono break-all">{errorMessage || 'Unknown error'}</p>
+                  <p className="text-xs text-amber-700 leading-relaxed pt-1 border-t border-red-100">{getErrorHint(errorMessage)}</p>
                 </div>
-                <button onClick={onRetry} className="mt-4 w-full py-2.5 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors">
-                  Retry
+
+                <div>
+                  <p className="text-[11px] text-gray-400 mb-2">Change style and retry:</p>
+                  <ToneSelector
+                    currentTone={tone}
+                    defaultTone={defaultTone}
+                    customTones={customTones}
+                    onToneChange={(t) => onToneChange(t)}
+                    onSaveDefault={onSaveDefault}
+                    disabled={false}
+                  />
+                </div>
+
+                <button
+                  onClick={onRetry}
+                  className="w-full py-2.5 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+                >
+                  Retry with same style
                 </button>
               </div>
             )}
