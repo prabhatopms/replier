@@ -61,7 +61,7 @@ export interface Contact {
   lastScrubAt?: number;
 }
 
-export type ToneType =
+export type BuiltInTone =
   | 'default'
   | 'chad'
   | 'simp'
@@ -69,9 +69,27 @@ export type ToneType =
   | 'flirty'
   | 'devilish'
   | 'smooth'
-  | 'casual';
+  | 'casual'
+  | 'mature'
+  | 'teen'
+  | 'gen_z'
+  | 'professional';
 
-export const TONE_LABELS: Record<ToneType, string> = {
+// Allows built-in tones + arbitrary custom tone IDs (e.g. "custom_abc123")
+export type ToneType = BuiltInTone | (string & {});
+
+export interface CustomTone {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
+export const BUILT_IN_TONES: BuiltInTone[] = [
+  'default', 'chad', 'simp', 'funny', 'flirty', 'devilish', 'smooth', 'casual',
+  'mature', 'teen', 'gen_z', 'professional',
+];
+
+export const TONE_LABELS: Record<BuiltInTone, string> = {
   default: 'Default',
   chad: 'Chad',
   simp: 'Simp',
@@ -80,4 +98,14 @@ export const TONE_LABELS: Record<ToneType, string> = {
   devilish: 'Devilish',
   smooth: 'Smooth',
   casual: 'Casual',
+  mature: 'Mature',
+  teen: 'Teen',
+  gen_z: 'Gen Z',
+  professional: 'Pro',
 };
+
+export function getToneDisplayName(tone: ToneType, customTones?: CustomTone[]): string {
+  if (tone in TONE_LABELS) return TONE_LABELS[tone as BuiltInTone];
+  const custom = customTones?.find((t) => t.id === tone);
+  return custom?.name ?? tone;
+}

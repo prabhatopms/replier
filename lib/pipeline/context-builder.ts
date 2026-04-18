@@ -1,4 +1,4 @@
-import type { Contact, ToneType } from '@/types/contact';
+import type { Contact, ToneType, CustomTone } from '@/types/contact';
 import type { Message } from '@/types/message';
 import type { LLMMessage } from '@/lib/llm/types';
 import {
@@ -21,14 +21,19 @@ export async function buildContext(
   tone: ToneType,
   freshStart = false,
 ): Promise<{ systemPrompt: string; messages: LLMMessage[] }> {
-  const result = await browser.storage.local.get(['userProfile', 'customSystemPrompt']);
+  const result = await browser.storage.local.get([
+    'userProfile',
+    'customSystemPrompt',
+    'customTones',
+  ]);
   const userProfile = result.userProfile as UserProfile | undefined;
   const customPrompt = (result.customSystemPrompt as string) || '';
+  const customTones = (result.customTones as CustomTone[]) || [];
 
   // Use custom prompt if set, otherwise auto-generate
   const systemPrompt = customPrompt.trim()
     ? customPrompt.trim()
-    : buildSystemPrompt(contact, tone, userProfile, freshStart);
+    : buildSystemPrompt(contact, tone, userProfile, freshStart, customTones);
 
   const llmMessages = buildMessageHistory(messages, contact, freshStart);
 

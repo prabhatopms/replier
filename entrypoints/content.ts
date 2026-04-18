@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { resolveAdapter } from '@/lib/platforms/registry';
 import type { ExtractedMessage } from '@/types/platform';
 import type { ExtensionMessage } from '@/lib/messaging/types';
-import type { ToneType } from '@/types/contact';
+import type { ToneType, CustomTone } from '@/types/contact';
 import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 
 export default defineContentScript({
@@ -53,8 +53,15 @@ export default defineContentScript({
     let replyText = '';
     let replyId = '';
     let replyTone: ToneType = 'default';
+    let contactDefaultTone: ToneType = 'default';
+    let customTones: CustomTone[] = [];
     let errorMessage = '';
     let contactContext: import('@/components/StatusPopover').ContactContext | null = null;
+
+    // Load custom tones from storage once on init
+    browser.storage.local.get('customTones').then((result) => {
+      customTones = (result.customTones as CustomTone[]) || [];
+    });
 
     function addLog(message: string, type: LogEntry['type'] = 'info'): void {
       activityLogs.push({ time: Date.now(), message, type });
@@ -138,13 +145,16 @@ export default defineContentScript({
             replyText,
             replyId,
             tone: replyTone,
+            defaultTone: contactDefaultTone,
+            customTones,
             errorMessage,
             logs: [...activityLogs],
             contactContext,
             onSend: handleSend,
             onRedo: handleRedo,
             onToneChange: handleToneChange,
-            onEdit: handleEdit,
+            onSaveDefault: handleSaveDefaultTone,
+            onRefreshContext: handleRefreshContext,
             onDismiss: handleDismiss,
             onRetry: handleRetry,
             onGenerateNow: handleGenerateNow,
@@ -272,9 +282,10 @@ export default defineContentScript({
       } satisfies ExtensionMessage)) as {
         ok: boolean;
         lastMessageSender?: 'user' | 'contact' | null;
+        lastContactMessageId?: string | null;
         isActive?: boolean;
         hasMessages?: boolean;
-        pendingReply?: { id: string; replyText: string; tone: string } | null;
+        pendingReply?: { id: string; replyText: string; tone: string; triggerMessageId?: string } | null;
         preferredTone?: ToneType;
       };
 
@@ -284,17 +295,38 @@ export default defineContentScript({
         return;
       }
 
+      // Track the contact's saved default tone
+      if (response.preferredTone) {
+        contactDefaultTone = response.preferredTone;
+        replyTone = response.preferredTone;
+      }
+
       addLog(`Status: active=${response.isActive}, lastMsg=${response.lastMessageSender || 'none'}, pending=${!!response.pendingReply}`, 'info');
 
-      // If there's a pending reply ready, show it in the popover (don't auto-fill input)
+      // Check if there's a cached pending reply, but first verify it's still fresh.
+      // A reply is stale if a newer message from the contact arrived after it was generated.
       if (response.pendingReply && response.pendingReply.replyText) {
-        addLog('Found pending reply, showing it', 'success');
-        setStatus('ready', {
-          text: response.pendingReply.replyText,
-          id: response.pendingReply.id,
-          tone: (response.pendingReply.tone as ToneType) || 'default',
-        });
-        return;
+        const isStale =
+          response.lastContactMessageId != null &&
+          response.pendingReply.triggerMessageId !== response.lastContactMessageId;
+
+        if (isStale) {
+          addLog('Pending reply is stale — new message arrived, regenerating', 'warn');
+          // Discard the outdated reply quietly
+          await browser.runtime.sendMessage({
+            type: 'DISCARD_REPLY',
+            replyId: response.pendingReply.id,
+          } satisfies ExtensionMessage);
+          // Fall through to auto-generate below
+        } else {
+          addLog('Found cached reply (context unchanged), showing it', 'success');
+          setStatus('ready', {
+            text: response.pendingReply.replyText,
+            id: response.pendingReply.id,
+            tone: (response.pendingReply.tone as ToneType) || 'default',
+          });
+          return;
+        }
       }
 
       // If the last message is from the contact and the contact is active → auto-generate
@@ -385,6 +417,18 @@ export default defineContentScript({
       } satisfies ExtensionMessage);
     }
 
+    async function handleSaveDefaultTone(tone: ToneType): Promise<void> {
+      if (!currentContactId) return;
+      contactDefaultTone = tone;
+      renderPopover();
+      await browser.runtime.sendMessage({
+        type: 'SET_DEFAULT_TONE',
+        contactId: currentContactId,
+        tone,
+      } satisfies ExtensionMessage);
+      addLog(`Default tone set to "${tone}"`, 'success');
+    }
+
     async function handleToneChange(tone: string): Promise<void> {
       if (!currentContactId) return;
       const input = adapter!.getInputBox();
@@ -403,9 +447,6 @@ export default defineContentScript({
       } satisfies ExtensionMessage);
     }
 
-    function handleEdit(): void {
-      adapter!.getInputBox()?.focus();
-    }
 
     function handleDismiss(): void {
       if (replyId) {
@@ -482,6 +523,45 @@ export default defineContentScript({
 
       setStatus('generating');
 
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone || 'default',
+      } satisfies ExtensionMessage);
+    }
+
+    /**
+     * Quick-scrape the currently visible DOM messages (no scrolling),
+     * refresh contact context, then regenerate the reply.
+     * Used when Instagram adds a "New Messages" divider and the last scraped
+     * message is stale.
+     */
+    async function handleRefreshContext(): Promise<void> {
+      if (!currentContactId || !adapter) return;
+      addLog('Updating context from visible messages...', 'info');
+
+      // Extract whatever messages are currently visible without scrolling
+      const container = adapter.getMessageContainer();
+      if (container) {
+        const domMessages = adapter.extractMessages(container);
+        if (domMessages.length > 0) {
+          await browser.runtime.sendMessage({
+            type: 'SCRAPE_MESSAGES',
+            contactId: currentContactId,
+            messages: domMessages,
+            source: 'dom',
+          } satisfies ExtensionMessage);
+          addLog(`Captured ${domMessages.length} visible messages`, 'success');
+        } else {
+          addLog('No DOM messages captured — regenerating with existing context', 'warn');
+        }
+      }
+
+      // Refresh the context panel so "last seen message" updates
+      await fetchContactContext();
+
+      // Regenerate with fresh context
+      setStatus('generating');
       await browser.runtime.sendMessage({
         type: 'GENERATE_REPLY',
         contactId: currentContactId,
@@ -682,7 +762,8 @@ export default defineContentScript({
               id: message.replyId,
               tone: message.tone,
             });
-            // Don't auto-fill input — user clicks Send to insert + send
+            // Refresh context so "last seen message" is up-to-date
+            fetchContactContext();
           }
           break;
 

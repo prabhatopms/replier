@@ -2,6 +2,7 @@ import type { LLMProvider, LLMConfig } from './types';
 import { DEFAULT_LLM_CONFIG } from './types';
 import { claudeProvider } from './claude';
 import { geminiProvider } from './gemini';
+import { openaiProvider } from './openai';
 
 /**
  * Resolve the active LLM provider based on stored configuration.
@@ -10,6 +11,8 @@ export function getProviderFromConfig(config: LLMConfig): LLMProvider {
   switch (config.provider) {
     case 'gemini':
       return geminiProvider;
+    case 'openai':
+      return openaiProvider;
     case 'claude':
     default:
       return claudeProvider;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Contact } from '@/types/contact';
-import { GOAL_LABELS, TONE_LABELS } from '@/types/contact';
+import { GOAL_LABELS, getToneDisplayName } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
 
 interface DashboardProps {
@@ -121,7 +121,7 @@ export function Dashboard({
                       {GOAL_LABELS[contact.goal]}
                     </span>
                     <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                      {TONE_LABELS[contact.preferredTone]}
+                      {getToneDisplayName(contact.preferredTone)}
                     </span>
                   </div>
                 </div>

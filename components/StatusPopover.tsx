@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { ToneType } from '@/types/contact';
+import type { ToneType, CustomTone } from '@/types/contact';
 import { ToneSelector } from './ToneSelector';
 
 export type PopoverStatus = 'idle' | 'generating' | 'ready' | 'error';
@@ -39,13 +39,16 @@ interface StatusPopoverProps {
   replyText: string;
   replyId: string;
   tone: ToneType;
+  defaultTone?: ToneType;
+  customTones?: CustomTone[];
   errorMessage: string;
   logs: LogEntry[];
   contactContext: ContactContext | null;
   onSend: (text: string, replyId: string) => void;
   onRedo: () => void;
   onToneChange: (tone: string) => void;
-  onEdit: () => void;
+  onSaveDefault?: (tone: ToneType) => void;
+  onRefreshContext?: () => void;
   onDismiss: () => void;
   onRetry: () => void;
   onGenerateNow: () => void;
@@ -68,12 +71,15 @@ export function StatusPopover({
   replyText,
   replyId,
   tone,
+  defaultTone,
+  customTones,
   errorMessage,
   logs,
   onSend,
   onRedo,
   onToneChange,
-  onEdit,
+  onSaveDefault,
+  onRefreshContext,
   onDismiss,
   onRetry,
   contactContext,
@@ -84,7 +90,6 @@ export function StatusPopover({
   const [collapsed, setCollapsed] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showContext, setShowContext] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const [refineText, setRefineText] = useState('');
   const [showRefine, setShowRefine] = useState(false);
@@ -98,15 +103,18 @@ export function StatusPopover({
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (replyText) { setEditText(replyText); setIsEditing(false); setShowRefine(false); }
-  }, [replyText]);
-
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
+    if (replyText) {
+      setEditText(replyText);
+      setShowRefine(false);
+      // Auto-focus and place cursor at end
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
+        }
+      }, 50);
     }
-  }, [isEditing]);
+  }, [replyText]);
 
   useEffect(() => {
     if (status === 'ready' || status === 'generating' || status === 'error') setCollapsed(false);
@@ -165,8 +173,7 @@ export function StatusPopover({
   };
 
   const handleSend = () => {
-    onSend(isEditing ? editText : replyText, replyId);
-    setIsEditing(false);
+    onSend(editText || replyText, replyId);
   };
 
   const handleRefineSubmit = () => {
@@ -375,25 +382,55 @@ export function StatusPopover({
             {/* --- READY STATE --- */}
             {status === 'ready' && (
               <>
-                <div className="px-6 pt-5 pb-4">
-                  {isEditing ? (
-                    <textarea
-                      ref={textareaRef}
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      className="w-full min-h-[100px] p-4 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
-                      placeholder="Edit your reply..."
-                    />
-                  ) : (
-                    <div className="p-4 bg-gray-50 rounded-xl">
-                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{replyText}</p>
+                {/* Last seen message context strip */}
+                {contactContext?.recentMessages && contactContext.recentMessages.length > 0 && (
+                  <div className="mx-5 mt-4 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl flex items-start justify-between gap-2">
+                    <div className="min-w-0 shrink">
+                      <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Last seen message</span>
+                      <p className="text-xs text-amber-800 mt-0.5 truncate">
+                        {contactContext.recentMessages[contactContext.recentMessages.length - 1]}
+                      </p>
                     </div>
-                  )}
+                    {onRefreshContext && (
+                      <button
+                        onClick={onRefreshContext}
+                        title="Scrape visible messages and regenerate"
+                        className="shrink-0 flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg transition-colors"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                        </svg>
+                        Update
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Editable reply — always in edit mode */}
+                <div className="px-6 pt-4 pb-4">
+                  <textarea
+                    ref={textareaRef}
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend();
+                    }}
+                    className="w-full min-h-20 p-4 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                    placeholder="Edit your reply..."
+                  />
+                  <p className="text-[10px] text-gray-300 mt-1 text-right">⌘↵ to send</p>
                 </div>
 
                 {/* Tone selector */}
                 <div className="px-6 pb-3">
-                  <ToneSelector currentTone={tone} onToneChange={(t) => onToneChange(t)} disabled={false} />
+                  <ToneSelector
+                    currentTone={tone}
+                    defaultTone={defaultTone}
+                    customTones={customTones}
+                    onToneChange={(t) => onToneChange(t)}
+                    onSaveDefault={onSaveDefault}
+                    disabled={false}
+                  />
                 </div>
 
                 {/* Refine section */}
@@ -424,24 +461,21 @@ export function StatusPopover({
                   <button onClick={handleSend} className="flex-1 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors">
                     Send
                   </button>
-                  <button onClick={() => setIsEditing(!isEditing)} className="py-2.5 px-4 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
-                    {isEditing ? 'Preview' : 'Edit'}
-                  </button>
                   <button
                     onClick={() => setShowRefine(!showRefine)}
                     className={`py-2.5 px-3 text-sm font-medium rounded-xl transition-colors ${showRefine ? 'text-indigo-600 bg-indigo-50' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'}`}
-                    title="Refine with feedback"
+                    title="Refine with AI feedback"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                     </svg>
                   </button>
-                  <button onClick={() => { setIsEditing(false); setShowRefine(false); onRedo(); }} className="py-2.5 px-3 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors" title="Regenerate">
+                  <button onClick={() => { setShowRefine(false); onRedo(); }} className="py-2.5 px-3 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors" title="Regenerate">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
                     </svg>
                   </button>
-                  <button onClick={() => { setIsEditing(false); setShowRefine(false); onDismiss(); }} className="py-2.5 px-3 text-sm text-gray-400 hover:text-gray-600 rounded-xl transition-colors" title="Dismiss">
+                  <button onClick={() => { setShowRefine(false); onDismiss(); }} className="py-2.5 px-3 text-sm text-gray-400 hover:text-gray-600 rounded-xl transition-colors" title="Dismiss">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
@@ -451,7 +485,7 @@ export function StatusPopover({
                 {/* Start Fresh — always available in ready state */}
                 <div className="px-6 pb-4">
                   <button
-                    onClick={() => { setIsEditing(false); setShowRefine(false); onStartFresh(); }}
+                    onClick={() => { setShowRefine(false); onStartFresh(); }}
                     className="w-full py-2 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     Start fresh conversation

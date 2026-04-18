@@ -47,6 +47,9 @@ export type ExtensionMessage =
   | { type: 'GET_CONTACT_CONTEXT'; contactId: string }
   | { type: 'RECONCILE_MESSAGES'; contactId: string; scrapedMessages: ExtractedMessage[] }
 
+  // Content Script -> Service Worker: save default tone for a contact
+  | { type: 'SET_DEFAULT_TONE'; contactId: string; tone: ToneType }
+
   // Side Panel <-> Service Worker
   | { type: 'CONTACT_UPDATED'; contactId: string }
   | { type: 'SETTINGS_UPDATED' }

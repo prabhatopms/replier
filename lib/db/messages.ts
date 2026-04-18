@@ -82,6 +82,17 @@ export async function getLastMessage(
     .first();
 }
 
+export async function getLastContactMessage(
+  contactId: string,
+): Promise<Message | undefined> {
+  return db.messages
+    .where('[contactId+timestamp]')
+    .between([contactId, Dexie.minKey], [contactId, Dexie.maxKey])
+    .reverse()
+    .filter((m) => m.sender === 'contact' && m.verified !== false)
+    .first();
+}
+
 /**
  * Store messages with deduplication.
  * Checks for existing messages by timestamp+content to avoid duplicates

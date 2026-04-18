@@ -15,7 +15,7 @@ export interface LLMProvider {
   ): Promise<string>;
 }
 
-export type LLMProviderType = 'claude' | 'gemini';
+export type LLMProviderType = 'claude' | 'gemini' | 'openai';
 
 export interface LLMConfig {
   provider: LLMProviderType;
@@ -34,11 +34,17 @@ export const PROVIDER_MODELS: Record<LLMProviderType, Array<{ value: string; lab
     { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Best Quality)' },
     { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Budget)' },
   ],
+  openai: [
+    { value: 'gpt-4o', label: 'GPT-4o (Best Quality)' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)' },
+    { value: 'o4-mini', label: 'o4-mini (Reasoning)' },
+  ],
 };
 
 export const PROVIDER_LABELS: Record<LLMProviderType, string> = {
   claude: 'Anthropic Claude',
   gemini: 'Google Gemini',
+  openai: 'OpenAI',
 };
 
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
@@ -50,4 +56,5 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
 export const DEFAULT_MODELS: Record<LLMProviderType, string> = {
   claude: 'claude-sonnet-4-20250514',
   gemini: 'gemini-2.5-flash',
+  openai: 'gpt-4o',
 };

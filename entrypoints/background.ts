@@ -16,6 +16,7 @@ import {
   storeMessage,
   getRecentMessages,
   getLastMessage,
+  getLastContactMessage,
   storeMessagesDeduped,
   reconcileMessages,
 } from '@/lib/db/messages';
@@ -205,12 +206,16 @@ async function handleMessage(
       const contact = await getContact(message.contactId);
       if (!contact) return { ok: false, error: 'Contact not found' };
 
-      const lastMsg = await getLastMessage(message.contactId);
-      const pendingReply = await getPendingReplyForContact(message.contactId);
+      const [lastMsg, lastContactMsg, pendingReply] = await Promise.all([
+        getLastMessage(message.contactId),
+        getLastContactMessage(message.contactId),
+        getPendingReplyForContact(message.contactId),
+      ]);
 
       return {
         ok: true,
         lastMessageSender: lastMsg?.sender || null,
+        lastContactMessageId: lastContactMsg?.id || null,
         isActive: contact.isActive,
         hasMessages: !!lastMsg,
         pendingReply: pendingReply || null,
@@ -255,6 +260,15 @@ async function handleMessage(
 
       await saveContact(contact);
       return { ok: true, contact };
+    }
+
+    case 'SET_DEFAULT_TONE': {
+      const contact = await getContact(message.contactId);
+      if (!contact) return { ok: false, error: 'Contact not found' };
+      contact.preferredTone = message.tone;
+      contact.updatedAt = Date.now();
+      await saveContact(contact);
+      return { ok: true };
     }
 
     case 'DELETE_CONTACT': {

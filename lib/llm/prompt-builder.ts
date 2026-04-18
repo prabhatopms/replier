@@ -1,4 +1,4 @@
-import type { Contact, ToneType, StructuredSummary } from '@/types/contact';
+import type { Contact, ToneType, StructuredSummary, CustomTone } from '@/types/contact';
 import type { Message } from '@/types/message';
 import type { LLMMessage } from './types';
 import { getTonePrompt } from './tones';
@@ -25,6 +25,7 @@ export function buildSystemPrompt(
   tone: ToneType,
   userProfile?: UserProfile,
   freshStart = false,
+  customTones?: CustomTone[],
 ): string {
   const layers: string[] = [];
 
@@ -61,7 +62,7 @@ NO AI phrases: "absolutely", "I appreciate", "That sounds wonderful", "definitel
   layers.push(buildPersonaLayer(contact, freshStart));
 
   // Layer 4: Tone
-  layers.push(`Tone: ${getTonePrompt(tone)}`);
+  layers.push(`Tone: ${getTonePrompt(tone, customTones)}`);
 
   // Layer 5: Style matching
   if (!freshStart && contact.structuredSummary?.communicationStyle) {

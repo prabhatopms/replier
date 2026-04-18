@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Contact, ToneType } from '@/types/contact';
-import { ConversationGoal, GOAL_LABELS, TONE_LABELS } from '@/types/contact';
+import { ConversationGoal, GOAL_LABELS, TONE_LABELS, BUILT_IN_TONES, type BuiltInTone } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
 
 interface ContactEditorProps {
@@ -9,16 +9,7 @@ interface ContactEditorProps {
   onSaved: () => void;
 }
 
-const TONES: ToneType[] = [
-  'default',
-  'chad',
-  'simp',
-  'funny',
-  'flirty',
-  'devilish',
-  'smooth',
-  'casual',
-];
+const TONES = BUILT_IN_TONES;
 
 export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps) {
   const [form, setForm] = useState({
@@ -253,7 +244,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
                   }
                 `}
               >
-                {TONE_LABELS[tone]}
+                {TONE_LABELS[tone as BuiltInTone]}
               </button>
             ))}
           </div>
