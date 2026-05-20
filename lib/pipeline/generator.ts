@@ -45,7 +45,7 @@ export async function generateReply(
     // Build context (system prompt + message history)
     const context = await buildContext(contact, messages, tone, freshStart);
 
-    // Call the active LLM provider (Claude or Gemini)
+    // Call the active LLM provider
     const provider = await getActiveProvider();
     const replyText = await provider.generateReply(
       context.systemPrompt,

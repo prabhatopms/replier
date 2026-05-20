@@ -56,7 +56,10 @@ function generateId(): string {
   return `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+type SettingsTab = 'ai' | 'about' | 'styles';
+
 export function Settings({ onBack }: SettingsProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('ai');
   const [provider, setProvider] = useState<LLMProviderType>('claude');
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
     apiKey: '',
@@ -171,152 +174,204 @@ export function Settings({ onBack }: SettingsProps) {
   return (
     <div>
       {/* Page header */}
-      <div className="flex items-center gap-2 mb-5">
+      <div className="flex items-center gap-2 mb-6">
         <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-500 -ml-1">
           <ArrowLeft size={16} />
         </Button>
         <h2 className="text-sm font-semibold text-gray-900">Settings</h2>
       </div>
 
-      <div className="space-y-8">
-
-        {/* ── LLM Provider ── */}
-        <section>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">AI Provider</p>
-          <div className="grid grid-cols-3 gap-2.5">
-            {PROVIDERS.map((p) => (
-              <button
-                key={p}
-                onClick={() => handleProviderChange(p)}
-                className={`
-                  px-3 py-3 rounded-xl text-left transition-all border-2
-                  ${provider === p
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
-                  }
-                `}
-              >
-                <div className={`text-xs font-semibold ${provider === p ? 'text-indigo-700' : 'text-gray-700'}`}>
-                  {PROVIDER_LABELS[p]}
-                </div>
-                <div className={`text-[10px] mt-0.5 ${provider === p ? 'text-indigo-500' : 'text-gray-400'}`}>
-                  {PROVIDER_SUBLABELS[p]}
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* ── API Key ── */}
-        <section>
-          <Label className="mb-2">{PROVIDER_LABELS[provider]} API Key</Label>
-          <div className="relative">
-            <Input
-              type={showKey ? 'text' : 'password'}
-              value={currentKeyValue}
-              onChange={(e) =>
-                setApiKeys({ ...apiKeys, [currentKeyMeta.storageKey]: e.target.value })
-              }
-              placeholder={currentKeyMeta.placeholder}
-              className="pr-9 font-mono text-xs"
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey((v) => !v)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-            {currentKeyMeta.hint}. Stored locally, never shared.
-          </p>
-          <div className="flex flex-col gap-1.5 mt-3">
-            {PROVIDERS.filter((p) => p !== provider).map((otherProvider) => {
-              const otherMeta = API_KEY_META[otherProvider];
-              const hasKey = !!apiKeys[otherMeta.storageKey];
-              return (
-                <div key={otherProvider} className="flex items-center gap-1.5 text-[11px] text-gray-400">
-                  <span className={`w-1.5 h-1.5 rounded-full ${hasKey ? 'bg-green-400' : 'bg-gray-300'}`} />
-                  {PROVIDER_LABELS[otherProvider]} key {hasKey ? 'configured' : 'not set'}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ── Model ── */}
-        <section>
-          <Label className="mb-2">Model</Label>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="flex h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400"
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-7">
+        {(['ai', 'about', 'styles'] as SettingsTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+              activeTab === tab
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
-            {models.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          {provider === 'gemini' && (
-            <p className="text-[11px] text-amber-600 mt-1.5 leading-relaxed">
-              Gemini safety filters may block some flirty/devilish tones.
+            {tab === 'ai' ? 'AI Provider' : tab === 'about' ? 'About You' : 'Styles'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── AI Provider tab ── */}
+      {activeTab === 'ai' && (
+        <div className="space-y-8">
+
+          {/* Funny quote */}
+          <div className="flex items-start gap-3 px-4 py-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+            <span className="text-lg leading-none shrink-0">💸</span>
+            <p className="text-xs text-amber-800 leading-relaxed italic">
+              "I ain't paying for your AI consumption — bring your own model here."
             </p>
-          )}
-        </section>
-
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
-
-        {/* ── About You ── */}
-        <section>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">About You</p>
-          <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">
-            Help the AI match your personality and texting style.
-          </p>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Self Description</Label>
-              <Textarea
-                value={userProfile.description}
-                onChange={(e) => setUserProfile({ ...userProfile, description: e.target.value })}
-                placeholder="25M, software engineer, into fitness and travel, witty humor..."
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Texting Style</Label>
-              <Textarea
-                value={userProfile.textingStyle}
-                onChange={(e) => setUserProfile({ ...userProfile, textingStyle: e.target.value })}
-                placeholder="Short messages, lots of emojis, rarely capitalize, use 'haha' not 'lol'..."
-                rows={2}
-              />
-            </div>
           </div>
-        </section>
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
+          {/* ── Provider ── */}
+          <section>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Provider</p>
+            <div className="grid grid-cols-3 gap-2.5">
+              {PROVIDERS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handleProviderChange(p)}
+                  className={`
+                    px-3 py-3 rounded-xl text-left transition-all border-2
+                    ${provider === p
+                      ? 'border-indigo-500 bg-indigo-50'
+                      : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                    }
+                  `}
+                >
+                  <div className={`text-xs font-semibold ${provider === p ? 'text-indigo-700' : 'text-gray-700'}`}>
+                    {PROVIDER_LABELS[p]}
+                  </div>
+                  <div className={`text-[10px] mt-0.5 ${provider === p ? 'text-indigo-500' : 'text-gray-400'}`}>
+                    {PROVIDER_SUBLABELS[p]}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
 
-        {/* ── Talking Styles ── */}
-        <section>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Talking Styles</p>
-          <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">
+          {/* ── API Key ── */}
+          <section>
+            <Label className="mb-2">{PROVIDER_LABELS[provider]} API Key</Label>
+            <div className="relative">
+              <Input
+                type={showKey ? 'text' : 'password'}
+                value={currentKeyValue}
+                onChange={(e) =>
+                  setApiKeys({ ...apiKeys, [currentKeyMeta.storageKey]: e.target.value })
+                }
+                placeholder={currentKeyMeta.placeholder}
+                className="pr-9 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+              {currentKeyMeta.hint}. Stored locally, never shared.
+            </p>
+            <div className="flex flex-col gap-1.5 mt-3">
+              {PROVIDERS.filter((p) => p !== provider).map((otherProvider) => {
+                const otherMeta = API_KEY_META[otherProvider];
+                const hasKey = !!apiKeys[otherMeta.storageKey];
+                return (
+                  <div key={otherProvider} className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                    <span className={`w-1.5 h-1.5 rounded-full ${hasKey ? 'bg-green-400' : 'bg-gray-300'}`} />
+                    {PROVIDER_LABELS[otherProvider]} key {hasKey ? 'configured' : 'not set'}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Model ── */}
+          <section>
+            <Label className="mb-2">Model</Label>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="flex h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400"
+            >
+              {models.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            {provider === 'gemini' && (
+              <p className="text-[11px] text-amber-600 mt-1.5 leading-relaxed">
+                Gemini safety filters may block some flirty/devilish tones.
+              </p>
+            )}
+          </section>
+
+          {/* ── System Prompt ── */}
+          <section>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">System Prompt</p>
+            <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+              When set, this <strong className="text-gray-500">replaces</strong> the default prompt. Leave empty to use the built-in prompt.
+            </p>
+            <Textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              placeholder={`You text on Instagram DMs as the user. Keep replies SHORT (1-2 sentences max). Sound like a real person, not an AI.\n\nNever use formal phrases. Match the conversation vibe.\n\nOutput ONLY the message text. No quotes, no HTML.`}
+              rows={8}
+              className="text-xs font-mono leading-relaxed"
+            />
+            {customPrompt.trim() && (
+              <button
+                onClick={() => setCustomPrompt('')}
+                className="mt-1.5 text-xs text-red-500 hover:text-red-600 transition-colors"
+              >
+                Reset to default prompt
+              </button>
+            )}
+          </section>
+
+        </div>
+      )}
+
+      {/* ── About You tab ── */}
+      {activeTab === 'about' && (
+        <div className="space-y-6">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Help the AI match your personality and texting style. This context goes into every reply.
+          </p>
+          <section className="space-y-2">
+            <Label>Self Description</Label>
+            <Textarea
+              value={userProfile.description}
+              onChange={(e) => setUserProfile({ ...userProfile, description: e.target.value })}
+              placeholder="25M, software engineer, into fitness and travel, witty humor..."
+              rows={4}
+            />
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              Who you are — age, interests, personality, anything that shapes how you come across.
+            </p>
+          </section>
+          <section className="space-y-2">
+            <Label>Texting Style</Label>
+            <Textarea
+              value={userProfile.textingStyle}
+              onChange={(e) => setUserProfile({ ...userProfile, textingStyle: e.target.value })}
+              placeholder="Short messages, lots of emojis, rarely capitalize, use 'haha' not 'lol'..."
+              rows={3}
+            />
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              How you actually text — length, punctuation, emoji habits, words you always or never use.
+            </p>
+          </section>
+        </div>
+      )}
+
+      {/* ── Styles tab ── */}
+      {activeTab === 'styles' && (
+        <div className="space-y-6">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
             Styles control how replies sound. Create custom styles with your own instructions.
           </p>
 
           <button
             onClick={() => setShowBuiltIn((v) => !v)}
-            className="text-xs text-indigo-500 hover:text-indigo-700 mb-3 transition-colors flex items-center gap-1"
+            className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-1"
           >
             <Eye size={12} />
             {showBuiltIn ? 'Hide' : 'View'} built-in styles ({BUILT_IN_TONES.length})
           </button>
 
           {showBuiltIn && (
-            <div className="mb-4 space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
               {(BUILT_IN_TONES.filter((t) => t !== 'default') as BuiltInTone[]).map((tone) => (
                 <div key={tone} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -330,7 +385,7 @@ export function Settings({ onBack }: SettingsProps) {
           )}
 
           {customTones.length > 0 && (
-            <div className="space-y-2 mb-3">
+            <div className="space-y-2">
               {customTones.map((tone) => (
                 <div key={tone.id} className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5">
                   {editingTone?.id === tone.id ? (
@@ -349,11 +404,7 @@ export function Settings({ onBack }: SettingsProps) {
                         className="text-xs font-mono"
                       />
                       <div className="flex gap-2">
-                        <Button
-                          size="xs"
-                          onClick={saveEditingTone}
-                          disabled={!newToneName.trim() || !newTonePrompt.trim()}
-                        >
+                        <Button size="xs" onClick={saveEditingTone} disabled={!newToneName.trim() || !newTonePrompt.trim()}>
                           Save
                         </Button>
                         <Button size="xs" variant="outline" onClick={() => setEditingTone(null)}>
@@ -366,16 +417,10 @@ export function Settings({ onBack }: SettingsProps) {
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-semibold text-indigo-700">{tone.name}</span>
                         <div className="flex gap-1">
-                          <button
-                            onClick={() => startEditTone(tone)}
-                            className="text-gray-400 hover:text-gray-600 transition-colors p-0.5"
-                          >
+                          <button onClick={() => startEditTone(tone)} className="text-gray-400 hover:text-gray-600 transition-colors p-0.5">
                             <Pencil size={11} />
                           </button>
-                          <button
-                            onClick={() => deleteTone(tone.id)}
-                            className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
-                          >
+                          <button onClick={() => deleteTone(tone.id)} className="text-gray-400 hover:text-red-500 transition-colors p-0.5">
                             <Trash2 size={11} />
                           </button>
                         </div>
@@ -406,11 +451,7 @@ export function Settings({ onBack }: SettingsProps) {
                 className="text-xs font-mono"
               />
               <div className="flex gap-2">
-                <Button
-                  size="xs"
-                  onClick={saveEditingTone}
-                  disabled={!newToneName.trim() || !newTonePrompt.trim()}
-                >
+                <Button size="xs" onClick={saveEditingTone} disabled={!newToneName.trim() || !newTonePrompt.trim()}>
                   <Plus size={11} />
                   Add Style
                 </Button>
@@ -430,44 +471,16 @@ export function Settings({ onBack }: SettingsProps) {
               </button>
             )
           )}
-        </section>
+        </div>
+      )}
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
-
-        {/* ── System Prompt ── */}
-        <section>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">System Prompt</p>
-          <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
-            When set, this <strong className="text-gray-500">replaces</strong> the default prompt. Leave empty to use the built-in prompt.
-          </p>
-          <Textarea
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder={`You text on Instagram DMs as the user. Keep replies SHORT (1-2 sentences max). Sound like a real person, not an AI.\n\nNever use formal phrases. Match the conversation vibe.\n\nOutput ONLY the message text. No quotes, no HTML.`}
-            rows={8}
-            className="text-xs font-mono leading-relaxed"
-          />
-          {customPrompt.trim() && (
-            <button
-              onClick={() => setCustomPrompt('')}
-              className="mt-1.5 text-xs text-red-500 hover:text-red-600 transition-colors"
-            >
-              Reset to default prompt
-            </button>
-          )}
-        </section>
-
-        {/* ── Save ── */}
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full"
-        >
+      {/* ── Save ── */}
+      <div className="mt-8">
+        <Button onClick={handleSave} disabled={saving} className="w-full">
           {saving ? 'Saving...' : saved ? '✓ Saved!' : 'Save Settings'}
         </Button>
-
       </div>
+
     </div>
   );
 }

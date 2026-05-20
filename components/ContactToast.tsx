@@ -28,16 +28,16 @@ export function ContactToast({
   return (
     <div
       className={`
-        fixed top-4 right-4 z-[9999]
-        flex items-center gap-3 px-4 py-3
-        bg-white rounded-lg shadow-lg border border-gray-200
+        fixed top-5 right-5 z-[9999]
+        flex items-center gap-4 px-5 py-3.5
+        bg-white rounded-xl shadow-lg border border-gray-200
         transition-all duration-300
         ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}
       `}
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}
     >
       {/* Icon */}
-      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
         <span className="text-indigo-600 text-sm font-semibold">
           {(displayName || username).charAt(0).toUpperCase()}
         </span>
@@ -49,7 +49,7 @@ export function ContactToast({
           New contact: @{username}
         </span>
         <span className="text-xs text-gray-500">
-          Auto-created by Replier
+          Auto-created by InstaReplier
         </span>
       </div>
 

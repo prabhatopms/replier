@@ -30,7 +30,7 @@ export function Guide({ onBack }: GuideProps) {
             never leave your browser.
           </Step>
           <Step n={3}>
-            Go to <b>instagram.com/direct</b> and open any conversation. Replier detects the
+            Go to <b>instagram.com/direct</b> and open any conversation. InstaReplier detects the
             contact automatically and the floating popover appears.
           </Step>
           <Step n={4}>
@@ -52,7 +52,7 @@ export function Guide({ onBack }: GuideProps) {
           <FeatureList items={[
             ['Status dot', 'Green = idle, pulsing blue = generating, solid blue = reply ready, red = error.'],
             ['ctx button', 'Shows memory — relationship, goal, AI summary, inside jokes, recent messages.'],
-            ['Log icon', 'Activity log showing each step of what Replier just did.'],
+            ['Log icon', 'Activity log showing each step of what InstaReplier just did.'],
             ['Collapse arrow', 'Minimise the popover while keeping it accessible.'],
           ]} />
           <Tip>The popover stays on top of Instagram's UI. Drag it out of the way if it covers content you need to read.</Tip>
@@ -65,7 +65,7 @@ export function Guide({ onBack }: GuideProps) {
       title: 'Generating Replies',
       content: (
         <div className="space-y-3">
-          <p>Replier generates replies in three ways:</p>
+          <p>InstaReplier generates replies in three ways:</p>
           <FeatureList items={[
             ['Auto-generate', 'When a contact sends a message and Auto-pilot is on, a reply is generated immediately without you doing anything.'],
             ['Generate Now', 'Tap this button in the idle state to manually trigger generation for the current conversation.'],
@@ -168,12 +168,12 @@ export function Guide({ onBack }: GuideProps) {
       title: 'Memory & Context',
       content: (
         <div className="space-y-3">
-          <p>Replier builds a memory of each conversation so replies feel personal, not generic.</p>
+          <p>InstaReplier builds a memory of each conversation so replies feel personal, not generic.</p>
           <FeatureList items={[
             ['Auto-summary', 'After 5+ messages, the AI writes a rolling summary covering topics, inside jokes, shared interests, emotional dynamics, and recent context.'],
-            ['ctx panel', "Click \"ctx\" in the popover header to see exactly what Replier knows about this contact and what it's using to generate replies."],
+            ['ctx panel', "Click \"ctx\" in the popover header to see exactly what InstaReplier knows about this contact and what it's using to generate replies."],
             ['Structured memory', 'After enough history, the summary breaks down into key topics, inside jokes, communication style (emoji usage, message length), and recent context.'],
-            ['History scraping', 'On first contact detection, Replier scrolls back through the conversation to load your full history. A progress overlay shows the count.'],
+            ['History scraping', 'On first contact detection, InstaReplier scrolls back through the conversation to load your full history. A progress overlay shows the count.'],
           ]} />
           <Tip>Add a <b>Personal Note</b> in the contact editor ("she doesn't like small talk", "we met at the startup event"). It goes directly into every prompt for that person.</Tip>
         </div>
@@ -187,13 +187,13 @@ export function Guide({ onBack }: GuideProps) {
         <div className="space-y-3">
           <p>
             Sometimes Instagram adds a <i>"New Messages"</i> divider or loads messages after
-            Replier has already generated a reply. The amber strip at the top of the ready state
+            InstaReplier has already generated a reply. The amber strip at the top of the ready state
             shows you what the AI last saw.
           </p>
           <FeatureList items={[
-            ['Last seen message', 'The amber bar shows the most recent message Replier had in its context when it generated the reply.'],
-            ['Update button', "If new messages have appeared on screen since the reply was generated, tap \"↺ Update\" in the amber bar. Replier scrapes the visible messages and regenerates immediately."],
-            ['Smart cache', "If no new messages have arrived since the last generation, Replier reuses the cached reply instead of spending tokens on a new one."],
+            ['Last seen message', 'The amber bar shows the most recent message InstaReplier had in its context when it generated the reply.'],
+            ['Update button', "If new messages have appeared on screen since the reply was generated, tap \"↺ Update\" in the amber bar. InstaReplier scrapes the visible messages and regenerates immediately."],
+            ['Smart cache', "If no new messages have arrived since the last generation, InstaReplier reuses the cached reply instead of spending tokens on a new one."],
           ]} />
         </div>
       ),
@@ -206,7 +206,7 @@ export function Guide({ onBack }: GuideProps) {
         <div className="space-y-3">
           <p>Each person you DM becomes a contact. Customize them to get better replies.</p>
           <FeatureList items={[
-            ['Relationship', 'Label the relationship — "best friend", "girl I met at the bar", "colleague". Shapes how Replier writes.'],
+            ['Relationship', 'Label the relationship — "best friend", "girl I met at the bar", "colleague". Shapes how InstaReplier writes.'],
             ['Goal', "Set what you're trying to achieve: get a date, casual chat, flirt, networking, friendship, reconnect, or custom."],
             ['Personal notes', 'Free-text context the AI always gets — hobbies, things they mentioned, what you want to avoid.'],
             ['Default style', 'The style used when auto-generating for this person.'],
@@ -250,7 +250,7 @@ export function Guide({ onBack }: GuideProps) {
         <div className="space-y-3">
           <p>
             Power-user feature. In Settings → System Prompt you can write your own instructions
-            that completely replace Replier's built-in prompt.
+            that completely replace InstaReplier's built-in prompt.
           </p>
           <FeatureList items={[
             ['When to use', "When the built-in prompt doesn't match your style at all, or you have very specific instructions you always want followed."],
@@ -268,7 +268,7 @@ export function Guide({ onBack }: GuideProps) {
       content: (
         <ul className="space-y-2.5">
           {[
-            'Scrape conversation history first. Go to a conversation, let Replier finish scrolling, then generate. More history = better replies.',
+            'Scrape conversation history first. Go to a conversation, let InstaReplier finish scrolling, then generate. More history = better replies.',
             'Fill in "About You" in Settings. Self-description and texting style carry into every prompt and make replies sound like you.',
             'Use the Refine button instead of regenerating. "Make it shorter" or "less formal" tweaks are cheaper than a full regeneration.',
             'Set the goal per contact. "Get a date" produces very different openers than "Networking".',
@@ -292,10 +292,28 @@ export function Guide({ onBack }: GuideProps) {
         <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-500 -ml-1">
           <ArrowLeft size={16} />
         </Button>
-        <h2 className="text-sm font-semibold text-gray-900">How to Use Replier</h2>
+        <h2 className="text-sm font-semibold text-gray-900">How to Use InstaReplier</h2>
       </div>
 
-      <div className="space-y-2">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5 mb-4 space-y-1.5">
+        <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">From the Developer</p>
+        <ul className="space-y-1.5">
+          {[
+            'Try refreshing or close and reopen the extension if something isn\'t working.',
+            'If AI is configured, you should see a floating pop-over on your Instagram messages screen.',
+            'It first scrubs your chat history, then generates a reply.',
+            'It automatically creates a contact and builds their history context when you\'re active in that chat.',
+            'If it starts generating gibberish, delete that contact so it can rebuild fresh context.',
+          ].map((note, i) => (
+            <li key={i} className="flex gap-2 text-[11px] text-amber-800 leading-relaxed">
+              <span className="text-amber-500 font-bold shrink-0">→</span>
+              {note}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2.5">
         {sections.map((section) => (
           <CollapsibleSection key={section.id} emoji={section.emoji} title={section.title}>
             {section.content}
@@ -304,7 +322,7 @@ export function Guide({ onBack }: GuideProps) {
       </div>
 
       <p className="text-center text-[11px] text-gray-300 mt-6 pb-2">
-        Replier — AI replies for Instagram DMs
+        InstaReplier — AI replies for Instagram DMs
       </p>
     </div>
   );
@@ -327,7 +345,7 @@ function CollapsibleSection({
     <div className={`rounded-xl border transition-colors ${open ? 'border-indigo-100 bg-white' : 'border-gray-100 bg-white hover:border-gray-200'}`}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+        className="w-full flex items-center gap-3 px-5 py-4 text-left"
       >
         <span className="text-base shrink-0">{emoji}</span>
         <span className="flex-1 text-sm font-medium text-gray-800">{title}</span>
@@ -337,8 +355,8 @@ function CollapsibleSection({
         />
       </button>
       {open && (
-        <div className="px-4 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100">
-          <div className="pt-4">{children}</div>
+        <div className="px-5 pb-6 text-sm text-gray-600 leading-relaxed border-t border-gray-100">
+          <div className="pt-5">{children}</div>
         </div>
       )}
     </div>

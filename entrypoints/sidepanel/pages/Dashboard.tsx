@@ -74,7 +74,7 @@ export function Dashboard({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-7">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Contacts</h2>
           {contacts.length > 0 && (
@@ -94,17 +94,17 @@ export function Dashboard({
           </div>
           <p className="text-sm font-medium text-gray-600 mb-1">No contacts yet</p>
           <p className="text-xs text-gray-400 max-w-50 leading-relaxed">
-            Open a chat on Instagram and Replier will detect the contact automatically.
+            Open a chat on Instagram and InstaReplier will detect the contact automatically.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {contacts.map((contact) => (
             <Card key={contact.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3.5">
                   {/* Avatar */}
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-xs font-bold text-indigo-600">
                       {getInitials(contact.displayName)}
                     </span>
@@ -139,7 +139,7 @@ export function Dashboard({
               </CardHeader>
 
               <CardContent className="pt-0 pb-5">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {contact.relationship && (
                     <Badge variant="blue">{contact.relationship}</Badge>
                   )}

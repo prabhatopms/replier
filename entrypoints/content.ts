@@ -9,31 +9,32 @@ import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 
 export default defineContentScript({
   matches: [
-    'https://www.instagram.com/direct/*',
-    'https://web.whatsapp.com/*',
-    'https://www.messenger.com/*',
-    'https://x.com/messages/*',
-    'https://www.linkedin.com/messaging/*',
+    'https://www.instagram.com/*',
   ],
   cssInjectionMode: 'ui',
 
   async main(ctx) {
-    const adapter = resolveAdapter(window.location.href);
-    if (!adapter) {
-      console.log('[Replier] No adapter found for this page');
-      return;
+    // adapter may be null on non-/direct/ pages; we still set up the script
+    // so that SPA navigation into /direct/ is handled without a page reload.
+    let adapter = resolveAdapter(window.location.href);
+
+    async function injectInterceptor() {
+      if (!adapter) return;
+      try {
+        await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
+          keepInDom: true,
+        });
+        console.log('[Replier] Network interceptor injected');
+      } catch {
+        console.log('[Replier] No interceptor for this platform, using DOM-only');
+      }
     }
 
-    console.log(`[Replier] Loaded ${adapter.name} adapter`);
-
-    // Inject network interceptor
-    try {
-      await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
-        keepInDom: true,
-      });
-      console.log('[Replier] Network interceptor injected');
-    } catch {
-      console.log('[Replier] No interceptor for this platform, using DOM-only');
+    if (adapter) {
+      console.log(`[Replier] Loaded ${adapter.name} adapter`);
+      await injectInterceptor();
+    } else {
+      console.log('[Replier] Not on /direct/ yet — waiting for SPA navigation');
     }
 
     // =========================================================================
@@ -807,8 +808,20 @@ export default defineContentScript({
     ctx.addEventListener(
       window,
       'wxt:locationchange' as keyof WindowEventMap,
-      (() => {
-        if (!adapter.matchUrl(window.location.href)) return;
+      (async () => {
+        const newAdapter = resolveAdapter(window.location.href);
+        if (!newAdapter) {
+          // Navigated away from /direct/ — hide popover and wait
+          hidePopover();
+          return;
+        }
+        // First time arriving at /direct/ via SPA navigation
+        if (!adapter) {
+          adapter = newAdapter;
+          await injectInterceptor();
+        } else {
+          adapter = newAdapter;
+        }
         // Reset all state for the new conversation
         currentContactId = null;
         currentContactName = '';
@@ -860,10 +873,11 @@ export default defineContentScript({
       }
     }
 
-    // Initial contact detection
-    ctx.setTimeout(detectAndSetContact, 1000);
-    // Attach thread click listener after a brief delay for DOM to be ready
-    ctx.setTimeout(setupThreadClickListener, 2000);
+    // Initial contact detection — only if already on /direct/ at load time
+    if (adapter) {
+      ctx.setTimeout(detectAndSetContact, 1000);
+      ctx.setTimeout(setupThreadClickListener, 2000);
+    }
 
     // Clean up
     ctx.onInvalidated(() => {

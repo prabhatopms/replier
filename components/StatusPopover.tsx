@@ -85,7 +85,7 @@ function getErrorTitle(msg: string): string {
 
 function getErrorHint(msg: string): string {
   switch (categorizeError(msg)) {
-    case 'auth': return 'Open the Replier side panel → Settings and update your API key.';
+    case 'auth': return 'Open the InstaReplier side panel → Settings and update your API key.';
     case 'rate_limit': return 'Wait 30–60 seconds then retry. Or check your API quota in the provider dashboard.';
     case 'overloaded': return 'The AI service is busy. Retry in a moment, or switch to a faster model in Settings.';
     case 'blocked': return 'Try a milder style like Casual or Funny. Also simplify Personal Notes if they contain sensitive content.';
@@ -237,7 +237,7 @@ export function StatusPopover({
         {/* ====== HEADER ====== */}
         <div
           onMouseDown={handleMouseDown}
-          className="flex items-center gap-2.5 px-5 py-3 bg-gray-50 border-b border-gray-100 cursor-grab active:cursor-grabbing"
+          className="flex items-center gap-3 px-5 py-3.5 bg-gray-50 border-b border-gray-100 cursor-grab active:cursor-grabbing"
         >
           <div className="flex flex-col gap-[3px] opacity-30 flex-shrink-0">
             <div className="flex gap-[3px]"><span className="w-1 h-1 bg-gray-500 rounded-full" /><span className="w-1 h-1 bg-gray-500 rounded-full" /></div>
@@ -278,7 +278,7 @@ export function StatusPopover({
             </svg>
           </button>
 
-          <span className="text-[9px] text-gray-300 font-bold uppercase tracking-widest flex-shrink-0">Replier</span>
+          <span className="text-[9px] text-gray-300 font-bold uppercase tracking-widest flex-shrink-0">InstaReplier</span>
         </div>
 
         {/* ====== BODY ====== */}
@@ -286,8 +286,8 @@ export function StatusPopover({
           <div>
             {/* --- ACTIVITY LOG --- */}
             {showLogs && (
-              <div className="border-b border-gray-100 bg-gray-900 max-h-[150px] overflow-y-auto">
-                <div className="px-4 py-2 space-y-0.5 font-mono text-[11px]">
+              <div className="border-b border-gray-100 bg-gray-900 max-h-40 overflow-y-auto">
+                <div className="px-4 py-3 space-y-1 font-mono text-[11px]">
                   {logs.length === 0 ? (
                     <p className="text-gray-600 py-2">No activity yet...</p>
                   ) : (
@@ -306,10 +306,10 @@ export function StatusPopover({
             {/* --- CONTEXT/MEMORY PANEL --- */}
             {showContext && contactContext && (
               <div className="border-b border-gray-100 bg-gray-50 max-h-[300px] overflow-y-auto">
-                <div className="px-5 py-4 space-y-3 text-xs">
+                <div className="px-5 py-5 space-y-4 text-xs">
                   <div className="font-semibold text-gray-700 text-sm">Context & Memory for @{contactContext.username}</div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div><span className="text-gray-400">Relationship:</span> <span className="text-gray-700">{contactContext.relationship}</span></div>
                     <div><span className="text-gray-400">Goal:</span> <span className="text-gray-700">{contactContext.goal}</span></div>
                     <div><span className="text-gray-400">Tone:</span> <span className="text-gray-700">{contactContext.preferredTone}</span></div>
@@ -326,7 +326,7 @@ export function StatusPopover({
                   )}
 
                   {contactContext.structuredSummary ? (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <div className="font-semibold text-gray-600">AI Memory</div>
                       {contactContext.structuredSummary.overview && (
                         <div><span className="text-gray-400">Overview:</span> <span className="text-gray-700">{contactContext.structuredSummary.overview}</span></div>
@@ -374,8 +374,8 @@ export function StatusPopover({
 
             {/* --- IDLE STATE --- */}
             {status === 'idle' && (
-              <div className="px-6 py-5">
-                <p className="text-sm text-gray-500 leading-relaxed mb-4">
+              <div className="px-6 py-6">
+                <p className="text-sm text-gray-500 leading-relaxed mb-5">
                   {contactName
                     ? <>Listening for messages from <span className="font-medium text-gray-700">@{contactName}</span>. Reply auto-generates when they message.</>
                     : 'Open a conversation to get started.'
@@ -403,7 +403,7 @@ export function StatusPopover({
 
             {/* --- GENERATING STATE --- */}
             {status === 'generating' && (
-              <div className="px-6 py-6">
+              <div className="px-6 py-8">
                 <div className="flex items-center gap-3">
                   <div className="flex gap-1.5">
                     <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -412,7 +412,7 @@ export function StatusPopover({
                   </div>
                   <span className="text-sm text-gray-500">Generating reply for @{contactName}...</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-3">Calling LLM with conversation context. This takes a few seconds.</p>
+                <p className="text-xs text-gray-400 mt-4">Calling LLM with conversation context. This takes a few seconds.</p>
               </div>
             )}
 
@@ -421,7 +421,7 @@ export function StatusPopover({
               <>
                 {/* Last seen message context strip */}
                 {contactContext?.recentMessages && contactContext.recentMessages.length > 0 && (
-                  <div className="mx-5 mt-4 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl flex items-start justify-between gap-2">
+                  <div className="mx-5 mt-5 px-3.5 py-3 bg-amber-50 border border-amber-100 rounded-xl flex items-start justify-between gap-3">
                     <div className="min-w-0 shrink">
                       <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Last seen message</span>
                       <p className="text-xs text-amber-800 mt-0.5 truncate">
@@ -444,7 +444,7 @@ export function StatusPopover({
                 )}
 
                 {/* Editable reply — always in edit mode */}
-                <div className="px-6 pt-4 pb-4">
+                <div className="px-6 pt-5 pb-4">
                   <textarea
                     ref={textareaRef}
                     value={editText}
@@ -452,14 +452,14 @@ export function StatusPopover({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend();
                     }}
-                    className="w-full min-h-20 p-4 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                    className="w-full min-h-24 p-4 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
                     placeholder="Edit your reply..."
                   />
-                  <p className="text-[10px] text-gray-300 mt-1 text-right">⌘↵ to send</p>
+                  <p className="text-[10px] text-gray-300 mt-1.5 text-right">⌘↵ to send</p>
                 </div>
 
                 {/* Tone selector */}
-                <div className="px-6 pb-3">
+                <div className="px-6 pb-4">
                   <ToneSelector
                     currentTone={tone}
                     defaultTone={defaultTone}
@@ -473,7 +473,7 @@ export function StatusPopover({
                 {/* Refine section */}
                 {showRefine ? (
                   <div className="px-6 pb-4">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2.5">
                       <input
                         type="text"
                         value={refineText}
@@ -494,7 +494,7 @@ export function StatusPopover({
                 ) : null}
 
                 {/* Actions */}
-                <div className="px-6 pb-5 flex items-center gap-2">
+                <div className="px-6 pb-5 flex items-center gap-2.5">
                   <button onClick={handleSend} className="flex-1 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors">
                     Send
                   </button>
@@ -520,7 +520,7 @@ export function StatusPopover({
                 </div>
 
                 {/* Start Fresh — always available in ready state */}
-                <div className="px-6 pb-4">
+                <div className="px-6 pb-5">
                   <button
                     onClick={() => { setShowRefine(false); onStartFresh(); }}
                     className="w-full py-2 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
@@ -533,8 +533,8 @@ export function StatusPopover({
 
             {/* --- ERROR STATE --- */}
             {status === 'error' && (
-              <div className="px-6 py-5 space-y-4">
-                <div className="p-4 bg-red-50 rounded-xl border border-red-100 space-y-1.5">
+              <div className="px-6 py-6 space-y-5">
+                <div className="p-4 bg-red-50 rounded-xl border border-red-100 space-y-2">
                   <p className="text-sm text-red-700 font-medium">{getErrorTitle(errorMessage)}</p>
                   <p className="text-xs text-red-500 leading-relaxed font-mono break-all">{errorMessage || 'Unknown error'}</p>
                   <p className="text-xs text-amber-700 leading-relaxed pt-1 border-t border-red-100">{getErrorHint(errorMessage)}</p>

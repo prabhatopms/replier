@@ -7,17 +7,16 @@ export default defineConfig({
     plugins: [tailwindcss()],
   }),
   manifest: {
-    name: 'Replier',
-    description: 'AI-powered message reply assistant',
+    name: 'InstaReplier',
+    short_name: 'InstaReplier',
+    description: 'AI reply generator for Instagram DMs. Auto-generates context-aware replies using Claude, Gemini, or OpenAI with your own API key.',
+    version: '1.0.1',
     permissions: ['storage', 'sidePanel', 'activeTab'],
     host_permissions: [
       'https://www.instagram.com/*',
-      'https://web.whatsapp.com/*',
-      'https://www.messenger.com/*',
-      'https://x.com/*',
-      'https://www.linkedin.com/*',
       'https://api.anthropic.com/*',
       'https://generativelanguage.googleapis.com/*',
+      'https://api.openai.com/*',
     ],
     action: {},
     web_accessible_resources: [

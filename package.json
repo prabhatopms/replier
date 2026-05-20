@@ -1,8 +1,8 @@
 {
-  "name": "replier",
-  "description": "AI-powered message reply assistant",
+  "name": "instareplier",
+  "description": "AI reply generator for Instagram DMs using Claude, Gemini, or OpenAI",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",

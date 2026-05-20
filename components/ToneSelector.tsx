@@ -48,8 +48,8 @@ export function ToneSelector({
   const allTones: ToneType[] = [...DISPLAY_TONES, ...(customTones?.map((t) => t.id) ?? [])];
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
         {allTones.map((tone) => {
           const isSelected = currentTone === tone;
           const isDefault = defaultTone === tone;
@@ -60,7 +60,7 @@ export function ToneSelector({
               disabled={disabled}
               title={isDefault ? 'Default tone for this contact' : undefined}
               className={`
-                relative px-2.5 py-1 rounded-full text-xs font-medium transition-all
+                relative px-3 py-1.5 rounded-full text-xs font-medium transition-all
                 ${getToneColor(tone)}
                 ${isSelected ? 'ring-2 ring-offset-1 ring-indigo-500 scale-105' : ''}
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
