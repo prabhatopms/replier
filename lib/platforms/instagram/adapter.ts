@@ -46,7 +46,70 @@ export const instagramAdapter: PlatformAdapter = {
     for (let i = 0; i < bubbles.length; i++) {
       const bubble = bubbles[i];
       const textEl = querySelector(SELECTORS.messageText, bubble);
-      const text = textEl?.textContent?.trim();
+      let text = textEl?.textContent?.trim() || '';
+      let contentType: 'text' | 'image' | 'video' | 'link' = 'text';
+      let mediaUrl: string | undefined;
+
+      if (!text) {
+        // 1. Check for shared post or reel link
+        const shareLink = bubble.querySelector<HTMLAnchorElement>('a[href*="/reel/"], a[href*="/p/"]');
+        if (shareLink) {
+          const href = shareLink.getAttribute('href') || '';
+          const fullUrl = href.startsWith('http') ? href : `https://www.instagram.com${href}`;
+          const caption = extractBubbleCardText(bubble);
+          text = caption
+            ? `[Shared Reel/Post: ${fullUrl} — "${caption}"]`
+            : `[Shared Reel/Post: ${fullUrl}]`;
+          contentType = 'link';
+        } else {
+          // 2. Check for other links
+          const link = bubble.querySelector<HTMLAnchorElement>('a[href]');
+          if (link) {
+            const href = link.getAttribute('href') || '';
+            if (!href.includes('instagram.com/direct') && !href.startsWith('/direct')) {
+              const preview = extractBubbleCardText(bubble);
+              text = preview ? `[Link: ${href} — "${preview}"]` : `[Link: ${href}]`;
+              contentType = 'link';
+            }
+          }
+        }
+
+        // 3. Check for images
+        if (!text) {
+          const img = bubble.querySelector<HTMLImageElement>('img');
+          if (img) {
+            const src = img.getAttribute('src') || '';
+            const isEmoji = src.includes('/emoji/') || img.classList.contains('emoji');
+            if (isEmoji) {
+              text = img.getAttribute('alt') || '😀';
+            } else {
+              text = '[Sent an image]';
+              contentType = 'image';
+              // Capture CDN URL for vision AI (scontent CDN, not static assets)
+              if (src.startsWith('http') && src.includes('cdninstagram')) {
+                mediaUrl = src;
+              }
+            }
+          } else {
+            // 4. Check for videos
+            const video = bubble.querySelector<HTMLVideoElement>('video');
+            if (video) {
+              text = '[Sent a video]';
+              contentType = 'video';
+            }
+          }
+        }
+
+        // 5. Check for voice messages
+        if (!text) {
+          const isVoice = bubble.querySelector('audio') || bubble.querySelector('[aria-label*="audio"]') || bubble.querySelector('[aria-label*="voice"]');
+          if (isVoice) {
+            text = '[Sent a voice message]';
+            contentType = 'video';
+          }
+        }
+      }
+
       if (!text) continue;
 
       const sender = detectSender(bubble);
@@ -66,7 +129,8 @@ export const instagramAdapter: PlatformAdapter = {
         id,
         sender,
         content: text,
-        contentType: 'text',
+        contentType,
+        mediaUrl,
         timestamp,
       });
     }
@@ -218,6 +282,24 @@ export const instagramAdapter: PlatformAdapter = {
     await new Promise((r) => setTimeout(r, 2000));
 
     return scrollable.scrollHeight > prevHeight;
+  },
+
+  async scrollToBottom(): Promise<void> {
+    const container = this.getMessageContainer();
+    if (!container) return;
+    const scrollable = findScrollableChild(container) || container;
+
+    // Instagram virtualizes the message list — after scrolling up through history,
+    // the latest messages are unloaded and need an API round-trip to re-render.
+    // Poll until the bubble count stabilizes rather than using a fixed wait.
+    let prevCount = 0;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      scrollable.scrollTop = scrollable.scrollHeight;
+      await new Promise((r) => setTimeout(r, 700));
+      const count = querySelectorAll(SELECTORS.messageBubble, container).length;
+      if (count > 0 && count === prevCount) break;
+      prevCount = count;
+    }
   },
 
   getInputBox(): HTMLElement | null {
@@ -427,7 +509,17 @@ function parseDirectThreadResponse(body: unknown): ExtractedMessage[] | null {
     const itemId = item.item_id as string;
     const itemType = item.item_type as string;
 
-    if (!text && itemType === 'text') continue;
+    let content = text;
+    let contentType: 'text' | 'image' | 'video' | 'link' = 'text';
+    let mediaUrl: string | undefined;
+
+    if (!content) {
+      if (itemType === 'text') continue;
+      const media = extractMediaContent(item);
+      content = media.content;
+      contentType = media.contentType;
+      mediaUrl = media.mediaUrl;
+    }
 
     const sender: 'user' | 'contact' =
       viewerId && String(userId) === String(viewerId) ? 'user' : 'contact';
@@ -435,8 +527,9 @@ function parseDirectThreadResponse(body: unknown): ExtractedMessage[] | null {
     messages.push({
       id: itemId || uuid(),
       sender,
-      content: text || `[${itemType || 'media'}]`,
-      contentType: itemType === 'text' ? 'text' : 'image',
+      content,
+      contentType,
+      mediaUrl,
       timestamp: timestamp ? timestamp * 1000 : Date.now(),
       rawData: item,
     });
@@ -521,4 +614,114 @@ function simpleHash(str: string): string {
     hash = hash & hash; // Convert to 32-bit integer
   }
   return Math.abs(hash).toString(36);
+}
+
+/**
+ * Extract text from a link/reel card bubble beyond the URL itself.
+ * Walks text nodes, skipping raw URLs and single-char strings, to find
+ * caption or preview title text rendered in the card.
+ */
+function extractBubbleCardText(bubble: HTMLElement): string {
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const t = (node.textContent || '').trim();
+    if (!t || t.length < 4) continue;
+    if (/^https?:\/\//.test(t)) continue;
+    if (/^www\./.test(t)) continue;
+    parts.push(t);
+  }
+  return parts.join(' ').slice(0, 100).trim();
+}
+
+/**
+ * Truncate a caption to a readable snippet.
+ */
+function captionSnippet(text: string | undefined | null): string {
+  if (!text) return '';
+  const clean = text.replace(/\n+/g, ' ').trim();
+  return clean.length > 100 ? `${clean.slice(0, 100)}…` : clean;
+}
+
+/**
+ * Extract details from Instagram API media, link, and share payloads.
+ */
+function extractMediaContent(item: any): { content: string; contentType: 'text' | 'image' | 'video' | 'link'; mediaUrl?: string } {
+  const itemType = item.item_type as string;
+
+  // 1. Link items
+  if (itemType === 'link' && item.link) {
+    const uri = item.link.web_uri || item.link.text || '';
+    if (uri) {
+      const title = captionSnippet(
+        item.link.link_context?.link_title ||
+        item.link.link_context?.link_summary ||
+        item.link.title,
+      );
+      return {
+        content: title ? `[Link: ${uri} — "${title}"]` : `[Link: ${uri}]`,
+        contentType: 'link',
+      };
+    }
+  }
+
+  // 2. Reels (felix_share or clip)
+  if (itemType === 'felix_share' || itemType === 'clip') {
+    const videoShare = item.felix_share?.video_share || item.clip?.video_share || item.clip;
+    if (videoShare) {
+      const code = videoShare.code || videoShare.id || '';
+      const url = code ? `https://www.instagram.com/reel/${code}/` : '';
+      const caption = captionSnippet(
+        videoShare.caption?.text || videoShare.caption || videoShare.title,
+      );
+      return {
+        content: caption
+          ? `[Shared Reel: ${url || 'video'} — "${caption}"]`
+          : `[Shared Reel: ${url || 'video'}]`,
+        contentType: 'link',
+      };
+    }
+  }
+
+  // 3. Media share (posts)
+  if (itemType === 'media_share' && item.media_share) {
+    const code = item.media_share.code || '';
+    const url = code ? `https://www.instagram.com/p/${code}/` : '';
+    const caption = captionSnippet(item.media_share.caption?.text || item.media_share.title);
+    return {
+      content: caption
+        ? `[Shared Post: ${url || 'media'} — "${caption}"]`
+        : `[Shared Post: ${url || 'media'}]`,
+      contentType: 'link',
+    };
+  }
+
+  // 4. Voice media
+  if (itemType === 'voice_media') {
+    return { content: '[Sent a voice message]', contentType: 'video' };
+  }
+
+  // 5. Normal media (images/videos)
+  if (itemType === 'media' && item.media) {
+    const isVideo = item.media.media_type === 2;
+    if (!isVideo) {
+      // Pick the largest candidate ≤1080px wide for vision (avoids huge payloads)
+      const candidates: Array<{ url: string; width: number }> =
+        item.media.image_versions2?.candidates || [];
+      const sorted = [...candidates]
+        .filter((c) => c.width <= 1080)
+        .sort((a, b) => b.width - a.width);
+      const imageUrl = sorted[0]?.url || candidates[0]?.url;
+      return {
+        content: '[Sent an image]',
+        contentType: 'image',
+        mediaUrl: imageUrl || undefined,
+      };
+    }
+    return { content: '[Sent a video]', contentType: 'video' };
+  }
+
+  // Fallback to media type label
+  return { content: `[${itemType || 'media'}]`, contentType: 'image' };
 }

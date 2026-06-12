@@ -18,6 +18,7 @@ export async function storeMessage(
     timestamp: extracted.timestamp,
     platform,
     scraped,
+    mediaUrl: extracted.mediaUrl,
     rawData: extracted.rawData ? JSON.stringify(extracted.rawData) : undefined,
   };
   await db.messages.put(message);
@@ -39,6 +40,7 @@ export async function storeMessages(
     timestamp: m.timestamp,
     platform,
     scraped,
+    mediaUrl: m.mediaUrl,
     rawData: m.rawData ? JSON.stringify(m.rawData) : undefined,
   }));
 
@@ -145,7 +147,8 @@ export async function storeMessagesDeduped(
       timestamp: m.timestamp,
       platform,
       scraped: true,
-      verified: true, // DOM-scraped messages are verified by definition
+      verified: true,
+      mediaUrl: m.mediaUrl,
       rawData: m.rawData ? JSON.stringify(m.rawData) : undefined,
     });
   }

@@ -1,6 +1,7 @@
 import type { LLMProvider, LLMMessage, LLMConfig } from './types';
 import { DEFAULT_LLM_CONFIG } from './types';
 import { buildSummarizationPrompt } from './prompt-builder';
+import { fetchImageAsBase64 } from './vision';
 
 /**
  * Gemini API nuances handled here:
@@ -31,9 +32,13 @@ import { buildSummarizationPrompt } from './prompt-builder';
 
 // -- Gemini API types --
 
+type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } };
+
 interface GeminiContent {
   role: 'user' | 'model';
-  parts: Array<{ text: string }>;
+  parts: GeminiPart[];
 }
 
 interface GeminiSafetySetting {
@@ -99,13 +104,9 @@ export async function setGeminiApiKey(key: string): Promise<void> {
 
 /**
  * Convert our internal LLMMessage[] to Gemini's contents format.
- *
- * Handles:
- * - Role mapping: 'assistant' -> 'model'
- * - Merging consecutive same-role messages (Gemini rejects these)
- * - Ensuring first message is role 'user' (Gemini requirement)
+ * Handles role mapping, image inline_data for vision, and consecutive-role merging.
  */
-function toGeminiContents(messages: LLMMessage[]): GeminiContent[] {
+async function toGeminiContents(messages: LLMMessage[]): Promise<GeminiContent[]> {
   if (messages.length === 0) {
     return [{ role: 'user', parts: [{ text: 'Please generate a reply.' }] }];
   }
@@ -114,13 +115,22 @@ function toGeminiContents(messages: LLMMessage[]): GeminiContent[] {
 
   for (const msg of messages) {
     const role: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
-    const last = contents[contents.length - 1];
+    const parts: GeminiPart[] = [];
 
-    // Merge consecutive same-role messages
-    if (last && last.role === role) {
-      last.parts.push({ text: msg.content });
+    if (msg.mediaUrl) {
+      const img = await fetchImageAsBase64(msg.mediaUrl);
+      if (img) {
+        parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+      }
+    }
+    parts.push({ text: msg.content || 'They sent this image' });
+
+    const last = contents[contents.length - 1];
+    // Only merge text-only messages; keep image messages separate
+    if (last && last.role === role && !msg.mediaUrl && last.parts.length === 1 && 'text' in last.parts[0]) {
+      (last.parts[0] as { text: string }).text += '\n' + msg.content;
     } else {
-      contents.push({ role, parts: [{ text: msg.content }] });
+      contents.push({ role, parts });
     }
   }
 
@@ -145,13 +155,13 @@ export const geminiProvider: LLMProvider = {
     const apiKey = await getGeminiApiKey();
     if (!apiKey) {
       throw new Error(
-        'Gemini API key not configured. Set it in Replier settings.',
+        'API not configured. Set an API key in Replier settings.',
       );
     }
 
     const config = await getConfig();
     const model = config.model;
-    const contents = toGeminiContents(messages);
+    const contents = await toGeminiContents(messages);
 
     const body: GeminiRequest = {
       systemInstruction: {
@@ -222,6 +232,13 @@ export const geminiProvider: LLMProvider = {
 
     const text = candidate.content?.parts?.[0]?.text;
     if (!text) {
+      if (candidate.finishReason === 'STOP') {
+        throw new Error(
+          'Gemini returned an empty response (finishReason: STOP). ' +
+            'This usually happens if the conversation ends with your own message (no incoming turn to reply to), ' +
+            'or if the AI provider refused the prompt instructions due to safety guidelines.'
+        );
+      }
       throw new Error(
         `Gemini returned an empty response (finishReason: ${candidate.finishReason}).`,
       );

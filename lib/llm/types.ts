@@ -1,6 +1,8 @@
 export interface LLMMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** CDN URL for image messages — triggers vision processing in providers */
+  mediaUrl?: string;
 }
 
 export interface LLMProvider {

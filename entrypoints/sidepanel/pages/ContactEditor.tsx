@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
-import type { Contact, ToneType } from '@/types/contact';
+import type { Contact, ToneType, CustomTone } from '@/types/contact';
 import { ConversationGoal, GOAL_LABELS, TONE_LABELS, BUILT_IN_TONES, type BuiltInTone } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { cn } from '@/lib/utils';
 
 interface ContactEditorProps {
   contactId?: string;
@@ -16,7 +9,79 @@ interface ContactEditorProps {
   onSaved: () => void;
 }
 
-const TONES = BUILT_IN_TONES;
+// ── Design tokens (matches StatusPopover) ────────────────────────────────────
+const F = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const T = {
+  body: '#18181f',
+  bodyMid: '#3a3a45',
+  bodyLight: '#5a5a66',
+  muted: '#8a8a99',
+  labelMuted: '#a0a0ad',
+  fieldLabel: '#a8a8b4',
+  white: '#ffffff',
+  surfaceAlt: '#fafafc',
+  divider: '#f1f1f4',
+  border: '#e7e7ee',
+  borderFocus: '#6366f1',
+  indigo: '#4f46e5',
+  indigoLight: '#6366f1',
+  indigoBg: '#eef0ff',
+  greenDot: '#16a34a',
+};
+
+const TONE_EMOJIS: Record<BuiltInTone, string> = {
+  default: '👤',
+  chad: '👑',
+  simp: '🥺',
+  funny: '😂',
+  flirty: '😏',
+  devilish: '😈',
+  smooth: '😎',
+  casual: '☕',
+  mature: '🎓',
+  teen: '🤙',
+  gen_z: '💅',
+  professional: '💼',
+};
+
+const sectionLabel: React.CSSProperties = {
+  fontSize: 9.5,
+  fontWeight: 700,
+  letterSpacing: '.07em',
+  textTransform: 'uppercase',
+  color: T.labelMuted,
+  marginBottom: 10,
+};
+
+const fieldLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: '.04em',
+  textTransform: 'uppercase',
+  color: T.fieldLabel,
+  marginBottom: 5,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 11px',
+  fontSize: 13,
+  color: T.body,
+  background: T.white,
+  border: `1px solid ${T.border}`,
+  borderRadius: 9,
+  outline: 'none',
+  fontFamily: F,
+  boxSizing: 'border-box',
+};
+
+const card: React.CSSProperties = {
+  background: T.white,
+  border: `1px solid ${T.border}`,
+  borderRadius: 13,
+  padding: '14px 14px',
+  marginBottom: 10,
+};
 
 export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps) {
   const [form, setForm] = useState({
@@ -33,10 +98,29 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [customTones, setCustomTones] = useState<CustomTone[]>([]);
 
   useEffect(() => {
     if (contactId) loadContact(contactId);
+    browser.storage.local.get('customTones').then((result) => {
+      setCustomTones((result.customTones as CustomTone[]) || []);
+    });
   }, [contactId]);
+
+  const otherTones = [...(customTones.map((t) => t.id)), ...BUILT_IN_TONES].filter(
+    (t) => t !== form.preferredTone
+  );
+  const allTones: ToneType[] = [form.preferredTone, ...otherTones];
+
+  function getToneEmoji(tone: ToneType): string {
+    return TONE_EMOJIS[tone as BuiltInTone] ?? '🎨';
+  }
+
+  function getToneLabel(tone: ToneType): string {
+    if (tone in TONE_LABELS) return TONE_LABELS[tone as BuiltInTone];
+    const custom = customTones.find((t) => t.id === tone);
+    return custom?.name ?? tone;
+  }
 
   async function loadContact(id: string) {
     setLoading(true);
@@ -92,173 +176,237 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-          <span className="text-xs text-gray-400">Loading contact...</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0', fontFamily: F }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 20, height: 20, borderRadius: '50%',
+            border: `2px solid ${T.indigo}`, borderTopColor: 'transparent',
+            animation: 'spin 0.7s linear infinite',
+          }} />
+          <span style={{ fontSize: 11.5, color: T.muted }}>Loading…</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      {/* Page header */}
-      <div className="flex items-center gap-2 mb-5">
-        <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-500 -ml-1">
-          <ArrowLeft size={16} />
-        </Button>
-        <h2 className="text-sm font-semibold text-gray-900">
+    <div style={{ fontFamily: F, color: T.body }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={onBack}
+          style={{
+            width: 28, height: 28, display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'center', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: T.white, cursor: 'pointer', color: T.bodyLight, fontSize: 14,
+          }}
+        >
+          ←
+        </button>
+        <span style={{ fontSize: 14, fontWeight: 700, color: T.body, letterSpacing: '-.01em' }}>
           {contactId ? 'Edit Contact' : 'New Contact'}
-        </h2>
+        </span>
       </div>
 
-      <div className="space-y-7">
-
-        {/* ── Identity ── */}
-        <div className="space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Identity</p>
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
+      {/* ── Identity card ── */}
+      <div style={card}>
+        <div style={sectionLabel}>Identity</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={fieldLabel}>Display Name</div>
+            <input
+              style={inputStyle}
               value={form.displayName}
               onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-              placeholder="Sarah, Mike from gym, etc."
+              placeholder="Sarah, Mike from gym…"
+              onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="platformUserId">Username / ID</Label>
-            <Input
-              id="platformUserId"
+          <div>
+            <div style={fieldLabel}>Username / ID</div>
+            <input
+              style={inputStyle}
               value={form.platformUserId}
               onChange={(e) => setForm({ ...form, platformUserId: e.target.value })}
               placeholder="instagram_handle"
+              onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="relationship">Relationship</Label>
-            <Input
-              id="relationship"
+          <div>
+            <div style={fieldLabel}>Relationship</div>
+            <input
+              style={inputStyle}
               value={form.relationship}
               onChange={(e) => setForm({ ...form, relationship: e.target.value })}
-              placeholder="crush, friend, colleague, tinder match..."
+              placeholder="crush, friend, colleague…"
+              onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             />
           </div>
         </div>
+      </div>
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
-
-        {/* ── Goal ── */}
-        <div className="space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Conversation Goal</p>
-          <div className="space-y-2">
-            <Label htmlFor="goal">Goal</Label>
+      {/* ── Goal card ── */}
+      <div style={card}>
+        <div style={sectionLabel}>Conversation Goal</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={fieldLabel}>Goal</div>
             <select
-              id="goal"
               value={form.goal}
               onChange={(e) => setForm({ ...form, goal: e.target.value as ConversationGoal })}
-              className="flex h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400"
+              style={{ ...inputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0ad' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer' }}
+              onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             >
               {Object.entries(GOAL_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="goalDescription">Goal Details <span className="font-normal text-gray-400">(optional)</span></Label>
-            <Input
-              id="goalDescription"
+          <div>
+            <div style={fieldLabel}>
+              Goal Details{' '}
+              <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10, color: T.muted }}>(optional)</span>
+            </div>
+            <input
+              style={inputStyle}
               value={form.goalDescription}
               onChange={(e) => setForm({ ...form, goalDescription: e.target.value })}
-              placeholder="Want to ask her out this weekend..."
+              placeholder="Want to ask her out this weekend…"
+              onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             />
           </div>
         </div>
+      </div>
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
+      {/* ── Personal Notes card ── */}
+      <div style={card}>
+        <div style={sectionLabel}>Personal Notes</div>
+        <p style={{ fontSize: 10.5, color: T.muted, marginBottom: 8, lineHeight: 1.4 }}>
+          Context the AI always gets when replying to this person.
+        </p>
+        <textarea
+          value={form.personalNotes}
+          onChange={(e) => setForm({ ...form, personalNotes: e.target.value })}
+          placeholder="Likes hiking, has a dog named Max, sarcastic humor, works in marketing…"
+          rows={4}
+          style={{
+            ...inputStyle,
+            resize: 'none',
+            lineHeight: 1.5,
+          }}
+          onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
+          onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
+        />
+      </div>
 
-        {/* ── Personal Notes ── */}
-        <div className="space-y-2">
-          <Label htmlFor="personalNotes">Personal Notes</Label>
-          <p className="text-[11px] text-gray-400">Context the AI always gets when replying to this person.</p>
-          <Textarea
-            id="personalNotes"
-            value={form.personalNotes}
-            onChange={(e) => setForm({ ...form, personalNotes: e.target.value })}
-            placeholder="Likes hiking, has a dog named Max, sarcastic humor, works in marketing..."
-            rows={4}
-          />
+      {/* ── Default Tone card ── */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+        <div style={{ ...sectionLabel, marginBottom: 0, flexShrink: 0 }}>Default Tone</div>
+        <div
+          className="no-scrollbar"
+          style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: 1, alignItems: 'center' }}
+        >
+          {allTones.map((tone) => {
+            const isSelected = form.preferredTone === tone;
+            return (
+              <button
+                key={tone}
+                type="button"
+                onClick={() => setForm({ ...form, preferredTone: tone })}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '5px 10px', borderRadius: 999, flexShrink: 0,
+                  fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                  fontFamily: F, cursor: 'pointer', transition: 'all .15s',
+                  border: '1px solid',
+                  ...(isSelected
+                    ? { background: T.indigo, borderColor: T.indigo, color: T.white, boxShadow: '0 2px 6px rgba(79,70,229,.25)' }
+                    : { background: T.surfaceAlt, borderColor: T.border, color: T.bodyMid }),
+                }}
+              >
+                <span style={{ fontSize: 13, lineHeight: 1 }}>{getToneEmoji(tone)}</span>
+                <span>{getToneLabel(tone)}</span>
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
-
-        {/* ── Tone ── */}
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Default Tone</p>
-          <div className="flex flex-wrap gap-2">
-            {TONES.map((tone) => {
-              const isSelected = form.preferredTone === tone;
-              return (
-                <button
-                  key={tone}
-                  onClick={() => setForm({ ...form, preferredTone: tone })}
-                  className={cn(
-                    'px-2.5 py-1 rounded-full text-xs font-medium transition-all',
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  )}
-                >
-                  {TONE_LABELS[tone as BuiltInTone]}
-                </button>
-              );
-            })}
+      {/* ── Auto-generate toggle card ── */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.body, marginBottom: 3 }}>
+            Auto-generate replies
+          </div>
+          <div style={{ fontSize: 10.5, color: T.muted, lineHeight: 1.4 }}>
+            Automatically generate a reply when this person messages you
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, isActive: !form.isActive })}
+          style={{
+            flexShrink: 0,
+            width: 40, height: 22, borderRadius: 11,
+            background: form.isActive ? T.indigo : '#d1d5db',
+            border: 'none', cursor: 'pointer',
+            position: 'relative', transition: 'background .2s',
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: 3,
+            left: form.isActive ? 21 : 3,
+            width: 16, height: 16,
+            borderRadius: '50%', background: T.white,
+            boxShadow: '0 1px 3px rgba(0,0,0,.2)',
+            transition: 'left .2s',
+          }} />
+        </button>
+      </div>
 
-        {/* ── Divider ── */}
-        <div className="h-px bg-gray-100" />
-
-        {/* ── Auto-pilot Toggle ── */}
-        <div className="flex items-center justify-between py-3">
-          <div className="flex-1 min-w-0 pr-4">
-            <p className="text-sm font-medium text-gray-800">Auto-generate replies</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Automatically generate a reply when this person messages you
-            </p>
-          </div>
-          <Switch
-            checked={form.isActive}
-            onCheckedChange={(checked) => setForm({ ...form, isActive: checked })}
-          />
-        </div>
-
-        {/* ── Actions ── */}
+      {/* ── Actions ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
         {contactId && (
-          <Button
-            variant="outline"
+          <button
             onClick={handleSummarize}
             disabled={summarizing}
-            className="w-full gap-2"
+            style={{
+              width: '100%', padding: '9px', fontSize: 12.5, fontWeight: 600,
+              color: T.indigo, background: T.indigoBg,
+              border: `1px solid #c7d2fe`, borderRadius: 10,
+              cursor: summarizing ? 'not-allowed' : 'pointer',
+              opacity: summarizing ? 0.7 : 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              fontFamily: F,
+            }}
           >
-            <RefreshCw size={13} className={summarizing ? 'animate-spin' : ''} />
-            {summarizing ? 'Summarizing...' : 'Re-summarize Conversation'}
-          </Button>
+            <span style={{ display: 'inline-block', animation: summarizing ? 'spin 0.7s linear infinite' : 'none' }}>↻</span>
+            {summarizing ? 'Summarizing…' : 'Re-summarize Conversation'}
+          </button>
         )}
-
-        <Button
+        <button
           onClick={handleSave}
           disabled={saving || !form.displayName}
-          className="w-full"
+          style={{
+            width: '100%', padding: '10px', fontSize: 13, fontWeight: 700,
+            color: T.white, background: T.indigo,
+            border: 'none', borderRadius: 10,
+            cursor: saving || !form.displayName ? 'not-allowed' : 'pointer',
+            opacity: saving || !form.displayName ? 0.6 : 1,
+            boxShadow: '0 4px 14px rgba(79,70,229,.35)',
+            fontFamily: F,
+          }}
         >
-          {saving ? 'Saving...' : contactId ? 'Save Changes' : 'Create Contact'}
-        </Button>
-
+          {saving ? 'Saving…' : contactId ? 'Save Changes' : 'Create Contact'}
+        </button>
       </div>
+
     </div>
   );
 }

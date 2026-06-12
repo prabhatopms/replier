@@ -1,14 +1,32 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2 } from 'lucide-react';
 import type { Message } from '@/types/message';
 import type { Contact } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
-import { Button } from '@/components/ui/button';
 
 interface ConversationViewProps {
   contactId: string;
   onBack: () => void;
 }
+
+const F = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const T = {
+  body: '#18181f',
+  bodyMid: '#3a3a45',
+  bodyLight: '#5a5a66',
+  muted: '#8a8a99',
+  labelMuted: '#a0a0ad',
+  white: '#ffffff',
+  surfaceAlt: '#fafafc',
+  divider: '#f1f1f4',
+  border: '#e7e7ee',
+  indigo: '#4f46e5',
+  indigoLight: '#6366f1',
+  indigoBg: '#eef0ff',
+  outgoingBg: '#eef0ff',
+  outgoingText: '#3730a3',
+  incomingBg: '#f3f3f7',
+  incomingText: '#2a2a33',
+};
 
 export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -16,25 +34,15 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [contactId]);
+  useEffect(() => { loadData(); }, [contactId]);
 
   async function loadData() {
     setLoading(true);
     try {
       const [contactRes, messagesRes] = await Promise.all([
-        browser.runtime.sendMessage({
-          type: 'GET_CONTACT',
-          contactId,
-        } satisfies ExtensionMessage) as Promise<{ ok: boolean; contact?: Contact | null }>,
-        browser.runtime.sendMessage({
-          type: 'GET_CONVERSATION',
-          contactId,
-          limit: 200,
-        } satisfies ExtensionMessage) as Promise<{ ok: boolean; messages?: Message[] }>,
+        browser.runtime.sendMessage({ type: 'GET_CONTACT', contactId } satisfies ExtensionMessage) as Promise<{ ok: boolean; contact?: Contact | null }>,
+        browser.runtime.sendMessage({ type: 'GET_CONVERSATION', contactId, limit: 200 } satisfies ExtensionMessage) as Promise<{ ok: boolean; messages?: Message[] }>,
       ]);
-
       if (contactRes?.ok && contactRes.contact) setContact(contactRes.contact);
       if (messagesRes?.ok && messagesRes.messages) setMessages(messagesRes.messages);
     } finally {
@@ -45,107 +53,130 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   async function handleClear() {
     if (!confirm('Clear all stored messages for this contact? The extension will rescrape from Instagram next time you open their chat.')) return;
     setClearing(true);
-    await browser.runtime.sendMessage({
-      type: 'CLEAR_HISTORY',
-      contactId,
-    } satisfies ExtensionMessage);
+    await browser.runtime.sendMessage({ type: 'CLEAR_HISTORY', contactId } satisfies ExtensionMessage);
     setMessages([]);
     setClearing(false);
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-          <span className="text-xs text-gray-400">Loading conversation...</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0', fontFamily: F }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${T.indigo}`, borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
+          <span style={{ fontSize: 11.5, color: T.muted }}>Loading…</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
+    <div style={{ fontFamily: F, color: T.body }}>
+
       {/* Header */}
-      <div className="flex items-center gap-2 mb-6">
-        <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-500 -ml-1 shrink-0">
-          <ArrowLeft size={16} />
-        </Button>
-        <h2 className="text-sm font-semibold text-gray-900 flex-1 truncate">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <button
+          onClick={onBack}
+          style={{
+            width: 28, height: 28, display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'center', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: T.white, cursor: 'pointer', color: T.bodyLight, fontSize: 14, flexShrink: 0,
+          }}
+        >
+          ←
+        </button>
+        <span style={{ fontSize: 14, fontWeight: 700, color: T.body, letterSpacing: '-.01em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {contact?.displayName || 'Conversation'}
-        </h2>
-        <span className="text-xs text-gray-400 shrink-0">{messages.length} msgs</span>
-        <Button
-          variant="outline"
-          size="xs"
+        </span>
+        <span style={{ fontSize: 10.5, color: T.muted, flexShrink: 0 }}>{messages.length} msgs</span>
+        <button
           onClick={handleClear}
           disabled={clearing}
-          className="shrink-0 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 gap-1"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '4px 9px', borderRadius: 7, flexShrink: 0,
+            border: '1px solid #fecdd3', background: '#fff5f5',
+            color: '#ef4444', fontSize: 11, fontWeight: 600,
+            cursor: clearing ? 'not-allowed' : 'pointer', opacity: clearing ? 0.6 : 1,
+            fontFamily: F,
+          }}
+          onMouseEnter={(e) => { if (!clearing) e.currentTarget.style.background = '#fee2e2'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff5f5'; }}
         >
-          <Trash2 size={11} />
-          {clearing ? 'Clearing...' : 'Clear'}
-        </Button>
+          🗑 {clearing ? 'Clearing…' : 'Clear'}
+        </button>
       </div>
 
-      {/* Context Summary */}
-      {contact?.conversationSummary && (
-        <div className="mb-5 px-4 py-4 bg-indigo-50 rounded-xl border border-indigo-100">
-          <h4 className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-1.5">
+      {/* Context summary */}
+      {contact?.conversationSummary && contact.conversationSummary !== 'No summary yet' && (
+        <div style={{
+          background: T.indigoBg, border: '1px solid #c7d2fe',
+          borderRadius: 11, padding: '10px 13px', marginBottom: 12,
+        }}>
+          <div style={{
+            fontSize: 9.5, fontWeight: 700, letterSpacing: '.07em',
+            textTransform: 'uppercase', color: T.indigoLight, marginBottom: 6,
+          }}>
             Context Summary
-          </h4>
-          <p className="text-xs text-indigo-900 leading-relaxed whitespace-pre-wrap">
+          </div>
+          <p style={{ fontSize: 11.5, color: '#3730a3', lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: 0 }}>
             {contact.conversationSummary}
           </p>
         </div>
       )}
 
-      {/* Messages */}
+      {/* Empty state */}
       {messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', textAlign: 'center' }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%', background: T.surfaceAlt,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="1.6">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-gray-500 mb-1">No messages stored yet</p>
-          <p className="text-xs text-gray-400 max-w-48 leading-relaxed">
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.bodyLight, marginBottom: 4 }}>No messages stored yet</div>
+          <div style={{ fontSize: 11, color: T.muted, maxWidth: 190, lineHeight: 1.5 }}>
             Messages will appear here as the extension captures them.
-          </p>
+          </div>
         </div>
       ) : (
-        <div className="space-y-2">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {messages.map((msg) => {
+            const isUser = msg.sender === 'user';
+            const time = new Date(msg.timestamp).toLocaleString(undefined, {
+              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            });
+            return (
               <div
-                className={`
-                  max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed
-                  ${msg.sender === 'user'
-                    ? 'bg-indigo-600 text-white rounded-br-sm'
-                    : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
-                  }
-                `}
+                key={msg.id}
+                style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}
               >
-                <p className="whitespace-pre-wrap wrap-break-word">
-                  {msg.contentType === 'text' ? msg.content : `[${msg.contentType}]`}
-                </p>
-                <span
-                  className={`block text-[10px] mt-1 ${
-                    msg.sender === 'user' ? 'text-indigo-200' : 'text-gray-400'
-                  }`}
-                >
-                  {new Date(msg.timestamp).toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
+                <div style={{
+                  maxWidth: '80%',
+                  background: isUser ? T.indigo : T.incomingBg,
+                  color: isUser ? T.white : T.incomingText,
+                  padding: '8px 12px',
+                  borderRadius: 14,
+                  borderBottomRightRadius: isUser ? 4 : 14,
+                  borderBottomLeftRadius: isUser ? 14 : 4,
+                  fontSize: 12.5,
+                  lineHeight: 1.45,
+                  boxShadow: isUser ? '0 2px 8px rgba(79,70,229,.2)' : 'none',
+                }}>
+                  <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {msg.contentType === 'text' ? msg.content : `[${msg.contentType}]`}
+                  </p>
+                  <span style={{
+                    display: 'block', fontSize: 9.5, marginTop: 4,
+                    color: isUser ? 'rgba(255,255,255,.55)' : T.muted,
+                  }}>
+                    {time}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -53,14 +53,48 @@ export default defineContentScript({
     let replyText = '';
     let replyId = '';
     let replyTone: ToneType = 'default';
-    let contactDefaultTone: ToneType = 'default';
     let customTones: CustomTone[] = [];
     let errorMessage = '';
     let contactContext: import('@/components/StatusPopover').ContactContext | null = null;
+    let isNewConversation = false;
+
+    let isApiConfigured = false;
+    let isNewContact = false;
+    let isScraping = false;
+    let scrapeComplete = false;
+    let scrapeDisplayCount = 0; // total messages sent to background (for display)
 
     // Load custom tones from storage once on init
     browser.storage.local.get('customTones').then((result) => {
       customTones = (result.customTones as CustomTone[]) || [];
+    });
+
+    // Listen for custom tones updates in storage to update the popover in real-time
+    browser.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.customTones) {
+        customTones = (changes.customTones.newValue as CustomTone[]) || [];
+        renderPopover();
+      }
+    });
+
+    // Load initial state from storage
+    browser.storage.local.get(['apiKey', 'geminiApiKey', 'openaiApiKey']).then((result) => {
+      isApiConfigured = !!(result.apiKey || result.geminiApiKey || result.openaiApiKey);
+      renderPopover();
+    });
+
+    // Re-check when settings change
+    browser.storage.onChanged.addListener((changes) => {
+      if ('apiKey' in changes || 'geminiApiKey' in changes || 'openaiApiKey' in changes) {
+        browser.storage.local.get(['apiKey', 'geminiApiKey', 'openaiApiKey']).then((result) => {
+          isApiConfigured = !!(result.apiKey || result.geminiApiKey || result.openaiApiKey);
+          renderPopover();
+        });
+      }
+      if ('customTones' in changes) {
+        customTones = (changes.customTones.newValue as CustomTone[]) || [];
+        renderPopover();
+      }
     });
 
     function addLog(message: string, type: LogEntry['type'] = 'info'): void {
@@ -120,6 +154,14 @@ export default defineContentScript({
       position: 'overlay',
       anchor: 'body',
       onMount: (container) => {
+        // Establish font baseline on the container div (child of :host).
+        // Even if :host inherits wrong values from the page, this ensures
+        // all React children see a correct inherited font context.
+        container.style.fontSize = '16px';
+        container.style.fontFamily =
+          "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+        container.style.lineHeight = '1.5';
+        container.style.color = '#111827';
         if (!popoverRoot) {
           popoverRoot = createRoot(container);
         }
@@ -132,7 +174,7 @@ export default defineContentScript({
 
     function renderPopover(): void {
       if (!popoverRoot) return;
-      if (!popoverVisible || !currentContactId) {
+      if (!popoverVisible || (!currentContactId && popoverStatus !== 'detecting')) {
         popoverRoot.render(null);
         return;
       }
@@ -145,20 +187,28 @@ export default defineContentScript({
             replyText,
             replyId,
             tone: replyTone,
-            defaultTone: contactDefaultTone,
             customTones,
             errorMessage,
             logs: [...activityLogs],
             contactContext,
+            isScraping,
+            scrapeCount: scrapeDisplayCount,
+            scrapeComplete,
+            isNewContact,
+            onCancelScrape: () => { scrapeAbortController?.abort(); },
+            onDismissNewContact: () => { isNewContact = false; renderPopover(); },
             onSend: handleSend,
             onRedo: handleRedo,
             onToneChange: handleToneChange,
-            onSaveDefault: handleSaveDefaultTone,
             onRefreshContext: handleRefreshContext,
-            onDismiss: handleDismiss,
+            onFlushAndRebuild: handleFlushAndRebuild,
+            onDismiss: hidePopover,
             onRetry: handleRetry,
+            isApiConfigured,
             onGenerateNow: handleGenerateNow,
             onStartFresh: handleStartFresh,
+            onContinue: handleContinue,
+            isNewConversation,
             onRefine: handleRefine,
           }),
         );
@@ -193,6 +243,8 @@ export default defineContentScript({
 
     async function detectAndSetContact(): Promise<void> {
       addLog('Detecting contact...', 'info');
+      showPopover();
+      setStatus('detecting');
 
       // Retry polling: Instagram's SPA doesn't update the DOM instantly
       let contactInfo = adapter!.getCurrentContactInfo();
@@ -228,11 +280,12 @@ export default defineContentScript({
         currentContactId = response.contact.id;
         currentContactName = contactInfo.name;
         currentContactUsername = contactInfo.platformUserId;
+        isNewConversation = false;
         addLog(`Contact detected: @${contactInfo.platformUserId}${response.isNew ? ' (new)' : ''}`, 'success');
 
-        // Show toast for new contacts
+        // Show inline new contact banner
         if (response.isNew) {
-          showContactToast(contactInfo.platformUserId, contactInfo.name);
+          isNewContact = true;
         }
 
         // Re-attach message observer
@@ -295,9 +348,7 @@ export default defineContentScript({
         return;
       }
 
-      // Track the contact's saved default tone
       if (response.preferredTone) {
-        contactDefaultTone = response.preferredTone;
         replyTone = response.preferredTone;
       }
 
@@ -331,7 +382,7 @@ export default defineContentScript({
           setStatus('ready', {
             text: response.pendingReply.replyText,
             id: response.pendingReply.id,
-            tone: (response.pendingReply.tone as ToneType) || 'default',
+            tone: (response.preferredTone || response.pendingReply.tone as ToneType) || 'default',
           });
           return;
         }
@@ -344,6 +395,7 @@ export default defineContentScript({
         response.hasMessages
       ) {
         addLog('Last message from contact — auto-generating reply', 'info');
+        replyTone = (response.preferredTone || 'default') as ToneType;
         setStatus('generating');
 
         await browser.runtime.sendMessage({
@@ -425,34 +477,33 @@ export default defineContentScript({
       } satisfies ExtensionMessage);
     }
 
-    async function handleSaveDefaultTone(tone: ToneType): Promise<void> {
+    async function handleToneChange(tone: string): Promise<void> {
       if (!currentContactId) return;
-      contactDefaultTone = tone;
-      renderPopover();
+      replyTone = tone as ToneType;
+
       await browser.runtime.sendMessage({
         type: 'SET_DEFAULT_TONE',
         contactId: currentContactId,
-        tone,
-      } satisfies ExtensionMessage);
-      addLog(`Default tone set to "${tone}"`, 'success');
-    }
-
-    async function handleToneChange(tone: string): Promise<void> {
-      if (!currentContactId) return;
-      const input = adapter!.getInputBox();
-      if (input) {
-        input.focus();
-        document.execCommand('selectAll', false);
-        document.execCommand('delete', false);
-      }
-      replyTone = tone as ToneType;
-      setStatus('generating');
-
-      await browser.runtime.sendMessage({
-        type: 'GENERATE_REPLY',
-        contactId: currentContactId,
         tone: tone as ToneType,
       } satisfies ExtensionMessage);
+
+      if (popoverStatus !== 'idle') {
+        const input = adapter!.getInputBox();
+        if (input) {
+          input.focus();
+          document.execCommand('selectAll', false);
+          document.execCommand('delete', false);
+        }
+        setStatus('generating');
+        await browser.runtime.sendMessage({
+          type: 'GENERATE_REPLY',
+          contactId: currentContactId,
+          tone: tone as ToneType,
+          freshStart: isNewConversation || undefined,
+        } satisfies ExtensionMessage);
+      } else {
+        renderPopover();
+      }
     }
 
 
@@ -471,6 +522,7 @@ export default defineContentScript({
         document.execCommand('delete', false);
       }
       // Back to idle — not hidden
+      isNewConversation = false;
       setStatus('idle');
     }
 
@@ -500,7 +552,8 @@ export default defineContentScript({
 
     async function handleStartFresh(): Promise<void> {
       if (!currentContactId) return;
-      addLog('Starting fresh conversation (ignoring history)', 'info');
+      addLog('Starting new conversation (ignoring history)', 'info');
+      isNewConversation = true;
       setStatus('generating');
 
       await browser.runtime.sendMessage({
@@ -508,6 +561,19 @@ export default defineContentScript({
         contactId: currentContactId,
         tone: replyTone || 'default',
         freshStart: true,
+      } satisfies ExtensionMessage);
+    }
+
+    async function handleContinue(): Promise<void> {
+      if (!currentContactId) return;
+      addLog('Continuing previous conversation', 'info');
+      isNewConversation = false;
+      setStatus('generating');
+
+      await browser.runtime.sendMessage({
+        type: 'GENERATE_REPLY',
+        contactId: currentContactId,
+        tone: replyTone || 'default',
       } satisfies ExtensionMessage);
     }
 
@@ -546,29 +612,45 @@ export default defineContentScript({
      */
     async function handleRefreshContext(): Promise<void> {
       if (!currentContactId || !adapter) return;
-      addLog('Updating context from visible messages...', 'info');
+      addLog('Checking for new messages...', 'info');
 
-      // Extract whatever messages are currently visible without scrolling
+      let newCount = 0;
+
+      // 1. Flush buffered API messages first — these accumulate from Instagram's
+      //    network responses but are never flushed for already-scraped contacts.
+      if (lsMessageBuffer.length > 0) {
+        const buffered = lsMessageBuffer.splice(0);
+        const res = (await browser.runtime.sendMessage({
+          type: 'SCRAPE_MESSAGES',
+          contactId: currentContactId,
+          messages: buffered,
+          source: 'api',
+        } satisfies ExtensionMessage)) as { ok: boolean; newCount?: number };
+        newCount += res?.newCount ?? 0;
+      }
+
+      // 2. Scrape the currently visible DOM messages.
       const container = adapter.getMessageContainer();
       if (container) {
         const domMessages = adapter.extractMessages(container);
         if (domMessages.length > 0) {
-          await browser.runtime.sendMessage({
+          const res = (await browser.runtime.sendMessage({
             type: 'SCRAPE_MESSAGES',
             contactId: currentContactId,
             messages: domMessages,
             source: 'dom',
-          } satisfies ExtensionMessage);
-          addLog(`Captured ${domMessages.length} visible messages`, 'success');
-        } else {
-          addLog('No DOM messages captured — regenerating with existing context', 'warn');
+          } satisfies ExtensionMessage)) as { ok: boolean; newCount?: number };
+          newCount += res?.newCount ?? 0;
         }
       }
 
-      // Refresh the context panel so "last seen message" updates
-      await fetchContactContext();
+      if (newCount === 0) {
+        addLog('No new messages — context is already up to date', 'info');
+        return;
+      }
 
-      // Regenerate with fresh context
+      addLog(`${newCount} new message${newCount !== 1 ? 's' : ''} found — regenerating`, 'success');
+      await fetchContactContext();
       setStatus('generating');
       await browser.runtime.sendMessage({
         type: 'GENERATE_REPLY',
@@ -577,69 +659,25 @@ export default defineContentScript({
       } satisfies ExtensionMessage);
     }
 
-    // =========================================================================
-    // CONTACT TOAST
-    // =========================================================================
+    async function handleFlushAndRebuild(): Promise<void> {
+      if (!currentContactId) return;
+      addLog('Deleting contact and rebuilding from scratch...', 'info');
+      setStatus('generating');
 
-    let toastRoot: ReturnType<typeof createRoot> | null = null;
-    const toastUi = await createShadowRootUi(ctx, {
-      name: 'replier-toast',
-      position: 'overlay',
-      anchor: 'body',
-      onMount: (container) => {
-        if (!toastRoot) toastRoot = createRoot(container);
-        return () => { toastRoot?.unmount(); toastRoot = null; };
-      },
-    });
+      try {
+        await browser.runtime.sendMessage({
+          type: 'DELETE_CONTACT',
+          contactId: currentContactId,
+        } satisfies ExtensionMessage);
 
-    function showContactToast(username: string, displayName: string): void {
-      toastUi.mount();
-      if (toastRoot) {
-        import('@/components/ContactToast').then(({ ContactToast }) => {
-          toastRoot!.render(
-            createElement(ContactToast, {
-              username,
-              displayName,
-              onConfigure: () => {
-                browser.runtime.sendMessage({ type: 'GET_ALL_CONTACTS' } satisfies ExtensionMessage);
-                toastUi.remove();
-              },
-              onDismiss: () => toastUi.remove(),
-            }),
-          );
-        });
+        currentContactId = null;
+        addLog('Contact deleted — re-detecting...', 'success');
+
+        await detectAndSetContact();
+      } catch (err) {
+        addLog(`Flush and rebuild failed: ${err instanceof Error ? err.message : err}`, 'error');
+        setStatus('error', { error: err instanceof Error ? err.message : String(err) });
       }
-    }
-
-    // =========================================================================
-    // SCRAPE OVERLAY
-    // =========================================================================
-
-    let scrapeRoot: ReturnType<typeof createRoot> | null = null;
-    const scrapeUi = await createShadowRootUi(ctx, {
-      name: 'replier-scrape',
-      position: 'overlay',
-      anchor: 'body',
-      onMount: (container) => {
-        if (!scrapeRoot) scrapeRoot = createRoot(container);
-        return () => { scrapeRoot?.unmount(); scrapeRoot = null; };
-      },
-    });
-
-    function updateScrapeOverlay(count: number, isComplete: boolean): void {
-      if (!scrapeRoot) return;
-      import('@/components/ScrapeOverlay').then(({ ScrapeOverlay }) => {
-        scrapeRoot!.render(
-          createElement(ScrapeOverlay, {
-            messageCount: count,
-            isComplete,
-            onCancel: () => {
-              scrapeAbortController?.abort();
-              scrapeUi.remove();
-            },
-          }),
-        );
-      });
     }
 
     // =========================================================================
@@ -689,9 +727,10 @@ export default defineContentScript({
       if (!currentContactId || scrapeAbortController) return;
       scrapeAbortController = new AbortController();
       scrapedMessageCount = 0;
-
-      scrapeUi.mount();
-      updateScrapeOverlay(0, false);
+      scrapeDisplayCount = 0;
+      isScraping = true;
+      scrapeComplete = false;
+      renderPopover();
 
       try {
         if (lsMessageBuffer.length > 0) {
@@ -714,6 +753,8 @@ export default defineContentScript({
           await new Promise((r) => setTimeout(r, 1500));
         }
 
+        // Scroll back to bottom so we capture the latest messages
+        await adapter!.scrollToBottom();
         const container = adapter!.getMessageContainer();
         if (container) {
           const domMessages = adapter!.extractMessages(container);
@@ -726,8 +767,10 @@ export default defineContentScript({
           totalMessages: scrapedMessageCount,
         } satisfies ExtensionMessage);
 
-        updateScrapeOverlay(scrapedMessageCount, true);
-        setTimeout(() => scrapeUi.remove(), 3500);
+        isScraping = false;
+        scrapeComplete = true;
+        renderPopover();
+        ctx.setTimeout(() => { scrapeComplete = false; renderPopover(); }, 3500);
       } catch (err) {
         console.error('[Replier] Scrape error:', err);
         await browser.runtime.sendMessage({
@@ -735,7 +778,9 @@ export default defineContentScript({
           contactId: currentContactId!,
           error: err instanceof Error ? err.message : 'Unknown error',
         } satisfies ExtensionMessage);
-        scrapeUi.remove();
+        isScraping = false;
+        scrapeComplete = false;
+        renderPopover();
       } finally {
         scrapeAbortController = null;
       }
@@ -750,9 +795,10 @@ export default defineContentScript({
         source: 'api',
       } satisfies ExtensionMessage)) as { ok: boolean; newCount?: number };
 
-      if (response?.ok && response.newCount) {
-        scrapedMessageCount += response.newCount;
-        updateScrapeOverlay(scrapedMessageCount, false);
+      if (response?.ok) {
+        scrapedMessageCount += response.newCount ?? 0;
+        scrapeDisplayCount += messages.length;
+        if (isScraping) renderPopover();
       }
     }
 
@@ -760,45 +806,60 @@ export default defineContentScript({
     // MESSAGE LISTENER (from service worker)
     // =========================================================================
 
-    browser.runtime.onMessage.addListener((message: ExtensionMessage) => {
-      switch (message.type) {
-        case 'REPLY_READY':
-          if (message.contactId === currentContactId) {
-            addLog('Reply generated successfully!', 'success');
-            setStatus('ready', {
-              text: message.text,
-              id: message.replyId,
-              tone: message.tone,
-            });
-            // Refresh context so "last seen message" is up-to-date
-            fetchContactContext();
-          }
-          break;
+    browser.runtime.onMessage.addListener(
+      (
+        message: ExtensionMessage,
+        _sender: any,
+        sendResponse: (response: any) => void,
+      ) => {
+        switch (message.type) {
+          case 'REPLY_READY':
+            if (message.contactId === currentContactId) {
+              addLog('Reply generated successfully!', 'success');
+              setStatus('ready', {
+                text: message.text,
+                id: message.replyId,
+                tone: message.tone,
+              });
+              // Refresh context so "last seen message" is up-to-date
+              fetchContactContext();
+            }
+            break;
 
-        case 'REPLY_GENERATING':
-          if (message.contactId === currentContactId) {
-            const count = message.messageCount || 0;
-            const summary = message.hasSummary ? 'yes' : 'no';
-            addLog(`Sending ${count} messages to LLM (summary: ${summary})`, 'info');
-            addLog('LLM is generating...', 'info');
-            setStatus('generating');
-          }
-          break;
+          case 'REPLY_GENERATING':
+            if (message.contactId === currentContactId) {
+              const count = message.messageCount || 0;
+              const summary = message.hasSummary ? 'yes' : 'no';
+              addLog(`Sending ${count} messages to LLM (summary: ${summary})`, 'info');
+              addLog('LLM is generating...', 'info');
+              setStatus('generating');
+            }
+            break;
 
-        case 'GENERATION_ERROR':
-          if (message.contactId === currentContactId) {
-            addLog(`Error: ${message.error}`, 'error');
-            setStatus('error', { error: message.error });
-          }
-          break;
+          case 'GENERATION_ERROR':
+            if (message.contactId === currentContactId) {
+              addLog(`Error: ${message.error}`, 'error');
+              setStatus('error', { error: message.error });
+            }
+            break;
 
-        case 'START_SCRAPE':
-          if (message.contactId === currentContactId) {
-            startAutoScrape();
-          }
-          break;
-      }
-    });
+          case 'START_SCRAPE':
+            if (message.contactId === currentContactId) {
+              startAutoScrape();
+            }
+            break;
+
+          case 'GET_POPOVER_VISIBILITY':
+            sendResponse({ visible: popoverVisible });
+            break;
+
+          case 'SHOW_POPOVER':
+            showPopover();
+            sendResponse({ ok: true });
+            break;
+        }
+      },
+    );
 
     // =========================================================================
     // SPA NAVIGATION
@@ -814,6 +875,10 @@ export default defineContentScript({
         currentContactName = '';
         currentContactUsername = '';
         contactContext = null;
+        isNewContact = false;
+        isScraping = false;
+        scrapeComplete = false;
+        scrapeDisplayCount = 0;
         hidePopover();
         lsMessageBuffer.length = 0;
         replyText = '';
@@ -846,6 +911,10 @@ export default defineContentScript({
               currentContactName = '';
               currentContactUsername = '';
               contactContext = null;
+              isNewContact = false;
+              isScraping = false;
+              scrapeComplete = false;
+              scrapeDisplayCount = 0;
               hidePopover();
               lsMessageBuffer.length = 0;
               replyText = '';
@@ -870,8 +939,6 @@ export default defineContentScript({
       messageObserver?.disconnect();
       scrapeAbortController?.abort();
       hidePopover();
-      toastUi.remove();
-      scrapeUi.remove();
     });
   },
 });

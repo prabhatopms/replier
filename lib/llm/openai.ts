@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMMessage } from './types';
+import { fetchImageAsBase64 } from './vision';
 
 async function getApiKey(): Promise<string> {
   const result = await browser.storage.local.get(['openaiApiKey', 'llmConfig']);
@@ -29,7 +30,20 @@ export const openaiProvider: LLMProvider = {
         temperature: 0.9,
         messages: [
           { role: 'system', content: systemPrompt },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
+          ...(await Promise.all(
+            messages.map(async (m) => {
+              if (!m.mediaUrl) return { role: m.role, content: m.content };
+              const img = await fetchImageAsBase64(m.mediaUrl);
+              if (!img) return { role: m.role, content: `${m.content} [image could not be loaded]` };
+              return {
+                role: m.role,
+                content: [
+                  { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.data}` } },
+                  { type: 'text', text: m.content || 'They sent this image' },
+                ],
+              };
+            }),
+          )),
         ],
       }),
     });

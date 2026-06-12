@@ -12,6 +12,8 @@ export interface ExtractedMessage {
   contentType: MessageContentType;
   timestamp: number;
   rawData?: unknown;
+  /** CDN URL for image messages — used for vision AI */
+  mediaUrl?: string;
 }
 
 export type MessageContentType =
@@ -55,6 +57,7 @@ export interface PlatformAdapter {
 
   // History scraping
   scrollToLoadMore(): Promise<boolean>;
+  scrollToBottom(): Promise<void>;
 
   // Input interaction
   getInputBox(): HTMLElement | null;

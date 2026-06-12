@@ -3,32 +3,32 @@ import { TONE_LABELS, BUILT_IN_TONES } from '@/types/contact';
 
 interface ToneSelectorProps {
   currentTone: ToneType;
-  defaultTone?: ToneType;
   onToneChange: (tone: ToneType) => void;
-  onSaveDefault?: (tone: ToneType) => void;
   customTones?: CustomTone[];
   disabled?: boolean;
 }
 
-const TONE_COLORS: Record<BuiltInTone, string> = {
-  default: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-  chad: 'bg-red-100 text-red-700 hover:bg-red-200',
-  simp: 'bg-pink-100 text-pink-700 hover:bg-pink-200',
-  funny: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200',
-  flirty: 'bg-purple-100 text-purple-700 hover:bg-purple-200',
-  devilish: 'bg-gray-800 text-gray-100 hover:bg-gray-700',
-  smooth: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
-  casual: 'bg-green-100 text-green-700 hover:bg-green-200',
-  mature: 'bg-stone-100 text-stone-700 hover:bg-stone-200',
-  teen: 'bg-orange-100 text-orange-700 hover:bg-orange-200',
-  gen_z: 'bg-teal-100 text-teal-700 hover:bg-teal-200',
-  professional: 'bg-sky-100 text-sky-700 hover:bg-sky-200',
+const TONE_EMOJIS: Record<BuiltInTone, string> = {
+  default: '👤',
+  chad: '👑',
+  simp: '🥺',
+  funny: '😂',
+  flirty: '😏',
+  devilish: '😈',
+  smooth: '😎',
+  casual: '☕',
+  mature: '🎓',
+  teen: '🤙',
+  gen_z: '💅',
+  professional: '💼',
 };
+
+const F = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 
 const DISPLAY_TONES: BuiltInTone[] = BUILT_IN_TONES.filter((t) => t !== 'default');
 
-function getToneColor(tone: ToneType): string {
-  return TONE_COLORS[tone as BuiltInTone] ?? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200';
+function getToneEmoji(tone: ToneType): string {
+  return TONE_EMOJIS[tone as BuiltInTone] ?? '🎨';
 }
 
 function getToneLabel(tone: ToneType, customTones?: CustomTone[]): string {
@@ -39,50 +39,76 @@ function getToneLabel(tone: ToneType, customTones?: CustomTone[]): string {
 
 export function ToneSelector({
   currentTone,
-  defaultTone,
   onToneChange,
-  onSaveDefault,
   customTones,
   disabled,
 }: ToneSelectorProps) {
-  const allTones: ToneType[] = [...DISPLAY_TONES, ...(customTones?.map((t) => t.id) ?? [])];
+  const otherTones = [...(customTones?.map((t) => t.id) ?? []), ...DISPLAY_TONES].filter(
+    (t) => t !== currentTone
+  );
+  const allTones: ToneType[] = [currentTone, ...otherTones];
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1.5">
-        {allTones.map((tone) => {
-          const isSelected = currentTone === tone;
-          const isDefault = defaultTone === tone;
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', overflow: 'hidden' }}>
+      {/* Label */}
+      <span style={{
+        fontSize: 9.5, fontWeight: 700,
+        letterSpacing: '.07em', textTransform: 'uppercase' as const,
+        color: '#a0a0ad',
+        flexShrink: 0,
+      }}>
+        Tone
+      </span>
+
+      {/* Chip row — horizontal scroll, no scrollbar */}
+      <div
+        className="no-scrollbar"
+        style={{
+          display: 'flex', gap: 5,
+          overflowX: 'auto',
+          flex: 1,
+          alignItems: 'center',
+          padding: '1px 0',
+        } as React.CSSProperties}
+      >
+        {allTones.map((t) => {
+          const isSelected = currentTone === t;
           return (
             <button
-              key={tone}
-              onClick={() => onToneChange(tone)}
+              key={t}
+              onClick={() => onToneChange(t)}
               disabled={disabled}
-              title={isDefault ? 'Default tone for this contact' : undefined}
-              className={`
-                relative px-2.5 py-1 rounded-full text-xs font-medium transition-all
-                ${getToneColor(tone)}
-                ${isSelected ? 'ring-2 ring-offset-1 ring-indigo-500 scale-105' : ''}
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-              `}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                padding: '3px 8px', borderRadius: 999,
+                fontSize: 11, fontWeight: 600,
+                whiteSpace: 'nowrap' as const,
+                flex: '0 0 auto', border: '1px solid',
+                fontFamily: F,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.5 : 1,
+                transition: 'all .15s',
+                ...(isSelected
+                  ? {
+                    background: '#4f46e5',
+                    borderColor: '#4f46e5',
+                    color: '#ffffff',
+                    boxShadow: '0 2px 5px rgba(79,70,229,.28)',
+                  }
+                  : {
+                    background: '#f6f6f9',
+                    borderColor: '#e7e7ee',
+                    color: '#3a3a45',
+                  }),
+              }}
             >
-              {isDefault && (
-                <span className="absolute -top-1 -right-1 text-[9px] leading-none">★</span>
-              )}
-              {getToneLabel(tone, customTones)}
+              <span style={{ fontSize: 12, lineHeight: 1 }}>{getToneEmoji(t)}</span>
+              <span>{getToneLabel(t, customTones)}</span>
             </button>
           );
         })}
       </div>
 
-      {onSaveDefault && currentTone !== defaultTone && (
-        <button
-          onClick={() => onSaveDefault(currentTone)}
-          className="text-[11px] text-indigo-500 hover:text-indigo-700 transition-colors"
-        >
-          ★ Set "{getToneLabel(currentTone, customTones)}" as default for this person
-        </button>
-      )}
     </div>
   );
 }

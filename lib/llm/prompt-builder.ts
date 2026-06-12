@@ -193,7 +193,7 @@ export function buildMessageHistory(
     // Skip internal instruction messages
     if (msg.content.startsWith('[Replier instruction:')) continue;
 
-    let text = formatMessageContent(msg);
+    const text = formatMessageContent(msg);
     const chars = text.length + 20;
 
     if (totalChars + chars > maxChars) break;
@@ -201,6 +201,7 @@ export function buildMessageHistory(
     result.unshift({
       role: msg.sender === 'user' ? 'assistant' : 'user',
       content: text,
+      mediaUrl: msg.mediaUrl,
     });
     totalChars += chars;
   }
@@ -220,11 +221,23 @@ export function buildMessageHistory(
     });
   }
 
-  // Claude requires alternating roles. Merge consecutive same-role messages.
+  // Both Claude and Gemini require the last message in the array to be from the user.
+  // If the last message is from the assistant (meaning you sent the last message),
+  // append a synthetic user prompt turn asking for a follow-up/response.
+  if (result.length > 0 && result[result.length - 1].role === 'assistant') {
+    result.push({
+      role: 'user',
+      content: `[Generate a follow-up message to ${contact.displayName} matching the conversation context]`,
+    });
+  }
+
+  // Claude requires alternating roles. Merge consecutive same-role messages,
+  // but never merge image messages — they need their mediaUrl preserved intact.
   const merged: LLMMessage[] = [];
   for (const msg of result) {
-    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
-      merged[merged.length - 1].content += '\n' + msg.content;
+    const last = merged[merged.length - 1];
+    if (last && last.role === msg.role && !msg.mediaUrl && !last.mediaUrl) {
+      last.content += '\n' + msg.content;
     } else {
       merged.push({ ...msg });
     }

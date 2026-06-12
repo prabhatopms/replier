@@ -23,6 +23,36 @@
   --radius-xl: calc(var(--radius) + 8px);
 }
 
+/* ── Shadow DOM: rem → px ───────────────────────────────────────────────────
+   Inside a shadow root, rem always resolves against the HOST DOCUMENT's
+   <html> font-size (Instagram sets it to 10px), not our own root.
+   Overriding these Tailwind theme tokens with px values makes every
+   spacing/text utility render at its intended size regardless of the page.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --spacing: 4px;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 36px;
+  --text-5xl: 48px;
+  --text-6xl: 60px;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
+  --radius-full: 9999px;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #111827;
@@ -40,7 +70,7 @@
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #6366f1;
-  --radius: 0.5rem;
+  --radius: 8px;
 
   /* legacy vars kept for StatusPopover / content script */
   --color-success: #10b981;
@@ -62,6 +92,109 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Shadow DOM host baseline ──────────────────────────────────────────────
+   WXT prepends :host{all:initial!important} before our CSS in the shadow
+   root <style> block. Among !important rules at the same specificity (:host),
+   source order wins — our CSS loads AFTER the reset, so these !important
+   declarations win and establish a real inherited baseline for all children.
+
+   CSS custom properties are explicitly excluded from 'all' in the spec, so
+   they don't need !important — they survive the reset regardless.
+   ───────────────────────────────────────────────────────────────────────── */
+:host {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+  font-size: 16px !important;
+  color: #111827 !important;
+  display: block !important;
+  line-height: 1.5 !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  box-sizing: border-box !important;
+
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #374151;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #374151;
+  --destructive: #ef4444;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #6366f1;
+  --radius: 8px;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+}
+
+/* ── Custom animation keyframes ─────────────────────────────────────────────
+   These must live here — Tailwind's arbitrary animation syntax
+   (animate-[fadeIn_0.2s_ease-out]) references keyframes by name but does
+   not generate them; they must be explicitly defined.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-4px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(-5px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
 /* Thin, minimal scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
@@ -76,4 +209,13 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+/* Hide scrollbars utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }

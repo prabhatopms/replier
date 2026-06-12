@@ -59,4 +59,8 @@ export type ExtensionMessage =
   | { type: 'DELETE_CONTACT'; contactId: string }
   | { type: 'CLEAR_HISTORY'; contactId: string }
   | { type: 'TRIGGER_SUMMARIZE'; contactId: string }
-  | { type: 'GET_CONVERSATION'; contactId: string; limit: number };
+  | { type: 'GET_CONVERSATION'; contactId: string; limit: number }
+  
+  // Popover Visibility & Control (Side Panel <-> Content Script)
+  | { type: 'GET_POPOVER_VISIBILITY' }
+  | { type: 'SHOW_POPOVER' };
