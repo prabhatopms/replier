@@ -252,6 +252,8 @@ export function StatusPopover({
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const hasDragged = useRef(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -270,10 +272,12 @@ export function StatusPopover({
     if (showLogs) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs, showLogs]);
 
-const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!popoverRef.current) return;
     const rect = popoverRef.current.getBoundingClientRect();
     dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    hasDragged.current = false;
     dragging.current = true;
     e.preventDefault();
   }, []);
@@ -281,6 +285,11 @@ const handleMouseDown = useCallback((e: React.MouseEvent) => {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        hasDragged.current = true;
+      }
       setPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y });
     };
     const onUp = () => { dragging.current = false; };
@@ -300,12 +309,19 @@ const handleMouseDown = useCallback((e: React.MouseEvent) => {
     return (
       <div
         ref={popoverRef}
-        onClick={() => setIsMinimized(false)}
+        onMouseDown={handleMouseDown}
+        onClick={(e) => {
+          if (hasDragged.current) {
+            hasDragged.current = false;
+            return;
+          }
+          setIsMinimized(false);
+        }}
         style={{
           ...positionStyle,
           fontFamily: F,
           zIndex: 9999,
-          cursor: 'pointer',
+          cursor: 'grab',
           userSelect: 'none',
           animation: 'fadeIn 0.2s ease-out',
         }}
