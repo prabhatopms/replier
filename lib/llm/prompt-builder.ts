@@ -69,7 +69,14 @@ NO AI phrases: "absolutely", "I appreciate", "That sounds wonderful", "definitel
     layers.push(buildStyleMatchingLayer(contact.structuredSummary));
   }
 
-  // Layer 6: Output format
+  // Layer 6: Conversation direction
+  layers.push(
+    `CONVERSATION FORMAT: In the message history below, "[You]:" = your messages, "[${contact.displayName}]:" = their messages.
+If the last message in the history is "[You]:", generate a FOLLOW-UP to what you said — not a response. Do NOT repeat yourself; move the conversation forward naturally.
+If the last message is "[${contact.displayName}]:", generate a REPLY to what they said.`,
+  );
+
+  // Layer 7: Output format
   layers.push(
     `Output ONLY the message. No quotes, no prefix, no explanation. Plain text, no HTML/tags. Complete the sentence. If they shared a reel/link, react briefly.`,
   );
@@ -193,7 +200,9 @@ export function buildMessageHistory(
     // Skip internal instruction messages
     if (msg.content.startsWith('[Replier instruction:')) continue;
 
-    const text = formatMessageContent(msg);
+    const rawText = formatMessageContent(msg);
+    const senderLabel = msg.sender === 'user' ? '[You]' : `[${contact.displayName}]`;
+    const text = `${senderLabel}: ${rawText}`;
     const chars = text.length + 20;
 
     if (totalChars + chars > maxChars) break;
@@ -217,17 +226,17 @@ export function buildMessageHistory(
   } else if (result[0].role === 'assistant') {
     result.unshift({
       role: 'user',
-      content: `[Earlier messages from ${contact.displayName}]`,
+      content: `[Earlier messages from ${contact.displayName} not shown]`,
     });
   }
 
   // Both Claude and Gemini require the last message in the array to be from the user.
-  // If the last message is from the assistant (meaning you sent the last message),
-  // append a synthetic user prompt turn asking for a follow-up/response.
+  // If the last message is from the assistant (meaning YOU sent the last message),
+  // append a synthetic user prompt turn asking for a follow-up — not a response.
   if (result.length > 0 && result[result.length - 1].role === 'assistant') {
     result.push({
       role: 'user',
-      content: `[Generate a follow-up message to ${contact.displayName} matching the conversation context]`,
+      content: `[It's your turn. You sent the last message above. Generate a natural follow-up — do NOT repeat what you said, move the conversation forward.]`,
     });
   }
 

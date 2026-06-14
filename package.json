@@ -2,7 +2,7 @@
   "name": "replier",
   "description": "AI-powered message reply assistant",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.2",
   "type": "module",
   "scripts": {
     "dev": "wxt",
