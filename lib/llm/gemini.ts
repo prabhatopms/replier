@@ -155,7 +155,7 @@ export const geminiProvider: LLMProvider = {
     const apiKey = await getGeminiApiKey();
     if (!apiKey) {
       throw new Error(
-        'API not configured. Set an API key in Replier settings.',
+        'API not configured. Set an API key in Oxytocin settings.',
       );
     }
 

@@ -160,7 +160,7 @@ export function Guide({ onBack }: GuideProps) {
         <div>
           <Step n={1}>Open <strong>Settings</strong> (gear icon, top-right) and choose your AI provider — <strong>Claude</strong>, <strong>Gemini</strong>, or <strong>OpenAI</strong>.</Step>
           <Step n={2}>Paste your API key for that provider. Keys are stored locally on your device and never leave your browser.</Step>
-          <Step n={3}>Go to <strong>instagram.com/direct</strong> and open any conversation. Replier detects the contact automatically and the floating popover appears.</Step>
+          <Step n={3}>Go to <strong>instagram.com/direct</strong> and open any conversation. Oxytocin detects the contact automatically and the floating popover appears.</Step>
           <Step n={4}>You're ready. When they message you, a reply is generated automatically.</Step>
         </div>
       ),
@@ -174,7 +174,7 @@ export function Guide({ onBack }: GuideProps) {
           </p>
           <FeatureList items={[
             ['Context tab', 'Shows memory — relationship, goal, AI summary, inside jokes, recent messages.'],
-            ['Log icon', 'Activity log showing each step of what Replier just did.'],
+            ['Log icon', 'Activity log showing each step of what Oxytocin just did.'],
             ['Drag', 'Drag the header to reposition the popover anywhere on screen.'],
           ]} />
           <Tip>The popover stays on top of Instagram's UI. Drag it out of the way if it covers content you need to read.</Tip>
@@ -185,7 +185,7 @@ export function Guide({ onBack }: GuideProps) {
       id: 'generating', emoji: '🤖', title: 'Generating Replies',
       content: (
         <div>
-          <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>Replier generates replies in three ways:</p>
+          <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>Oxytocin generates replies in three ways:</p>
           <FeatureList items={[
             ['Auto-generate', 'When a contact sends a message and Auto-pilot is on, a reply is generated immediately without you doing anything.'],
             ['Generate Now', 'Tap this in the idle state to manually trigger generation for the current conversation.'],
@@ -242,11 +242,11 @@ export function Guide({ onBack }: GuideProps) {
       id: 'memory', emoji: '🧠', title: 'Memory & Context',
       content: (
         <div>
-          <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>Replier builds a memory of each conversation so replies feel personal, not generic.</p>
+          <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>Oxytocin builds a memory of each conversation so replies feel personal, not generic.</p>
           <FeatureList items={[
             ['Auto-summary', 'After 5+ messages, the AI writes a rolling summary covering topics, inside jokes, shared interests, and recent context.'],
-            ['ctx panel', 'Click "Context" in the popover header to see exactly what Replier knows and is using to generate replies.'],
-            ['History scraping', 'On first contact detection, Replier scrolls back through the conversation to load your full history.'],
+            ['ctx panel', 'Click "Context" in the popover header to see exactly what Oxytocin knows and is using to generate replies.'],
+            ['History scraping', 'On first contact detection, Oxytocin scrolls back through the conversation to load your full history.'],
           ]} />
           <Tip>Add a <strong>Personal Note</strong> in the contact editor ("she doesn't like small talk", "we met at the startup event"). It goes directly into every prompt for that person.</Tip>
         </div>
@@ -284,7 +284,7 @@ export function Guide({ onBack }: GuideProps) {
       content: (
         <div>
           <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>
-            Power-user feature. In Settings → System Prompt you can write your own instructions that completely replace Replier's built-in prompt.
+            Power-user feature. In Settings → System Prompt you can write your own instructions that completely replace Oxytocin's built-in prompt.
           </p>
           <FeatureList items={[
             ['When to use', "When the built-in prompt doesn't match your style at all, or you have very specific instructions you always want followed."],
@@ -300,7 +300,7 @@ export function Guide({ onBack }: GuideProps) {
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[
-            'Scrape conversation history first. Go to a conversation, let Replier finish scrolling, then generate. More history = better replies.',
+            'Scrape conversation history first. Go to a conversation, let Oxytocin finish scrolling, then generate. More history = better replies.',
             'Fill in "About You" in Settings. Self-description and texting style carry into every prompt and make replies sound like you.',
             'Use Refine instead of regenerating. "Make it shorter" or "less formal" tweaks are cheaper than a full regeneration.',
             'Set the goal per contact. "Get a date" produces very different openers than "Networking".',
@@ -333,7 +333,7 @@ export function Guide({ onBack }: GuideProps) {
         >
           ←
         </button>
-        <span style={{ fontSize: 14, fontWeight: 700, color: T.body, letterSpacing: '-.01em' }}>How to Use Replier</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: T.body, letterSpacing: '-.01em' }}>How to Use Oxytocin</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -345,7 +345,7 @@ export function Guide({ onBack }: GuideProps) {
       </div>
 
       <p style={{ textAlign: 'center', fontSize: 10.5, color: '#d1d5db', marginTop: 20, paddingBottom: 4 }}>
-        Replier — AI replies for Instagram DMs
+        Oxytocin — Your brain's bonding chemical. Engineered as software.
       </p>
     </div>
   );

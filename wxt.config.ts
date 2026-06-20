@@ -3,19 +3,16 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
+  dev: { server: { port: 3002 } },
   vite: () => ({
     plugins: [tailwindcss()],
   }),
   manifest: {
-    name: 'Replier',
-    description: 'AI-powered message reply assistant',
+    name: 'Oxytocin',
+    description: 'Your brain\'s bonding chemical. Engineered as software.',
     permissions: ['storage', 'sidePanel', 'activeTab'],
     host_permissions: [
       'https://www.instagram.com/*',
-      'https://web.whatsapp.com/*',
-      'https://www.messenger.com/*',
-      'https://x.com/*',
-      'https://www.linkedin.com/*',
       'https://api.anthropic.com/*',
       'https://generativelanguage.googleapis.com/*',
     ],

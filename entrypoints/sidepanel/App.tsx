@@ -106,7 +106,7 @@ export function App() {
                 fontSize: 14, fontWeight: 700, color: T.body, letterSpacing: '-.01em',
               }}
             >
-              InstaReplier
+              Oxytocin
             </button>
 
             {/* Actions */}
@@ -196,7 +196,7 @@ export function App() {
               e.currentTarget.style.boxShadow = '0 4px 14px rgba(79,70,229,.35)';
             }}
           >
-            <span>💬</span> Show Replier Widget on Page
+            <span>💬</span> Show Oxytocin Widget on Page
           </button>
         )}
         <div style={{ flex: 1 }}>
@@ -231,7 +231,7 @@ export function App() {
       {/* ── Support footer ── */}
       <footer style={{ position: 'sticky', bottom: 0, zIndex: 10, padding: '4px 12px 12px' }}>
         <a
-          href="https://www.paypal.com/ncp/payment/2KDACGWT6ZZMU"
+          href="https://razorpay.me/@chemicalfarmers"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -244,8 +244,8 @@ export function App() {
         >
           <span style={{ fontSize: 18, lineHeight: 1 }}>☕</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.01em' }}>Support InstaReplier</div>
-            <div style={{ fontSize: 10, opacity: 0.8, marginTop: 1 }}>Buy me a coffee to keep this project alive</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.01em' }}>Support Oxytocin</div>
+            <div style={{ fontSize: 10, opacity: 0.8, marginTop: 1 }}>by chemicalfarmers · Buy me a coffee to keep this alive</div>
           </div>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7, flexShrink: 0 }}>
             <path d="M5 12h14M12 5l7 7-7 7" />

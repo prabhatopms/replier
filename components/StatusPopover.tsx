@@ -181,7 +181,7 @@ function getErrorTitle(msg: string): string {
 
 function getErrorHint(msg: string): string {
   switch (categorizeError(msg)) {
-    case 'auth': return 'Open the Replier side panel → Settings and update your API key.';
+    case 'auth': return 'Open the Oxytocin side panel → Settings and update your API key.';
     case 'rate_limit': return 'Wait 30–60 seconds then retry. Or check your API quota in the provider dashboard.';
     case 'overloaded': return 'The AI service is busy. Retry in a moment, or switch to a faster model in Settings.';
     case 'blocked': return 'Try a milder style like Casual or Funny. Also simplify Personal Notes if they contain sensitive content.';
@@ -352,7 +352,7 @@ export function StatusPopover({
             width: 14, height: 14, borderRadius: '50%', background: T.white,
             boxShadow: '0 0 0 2px rgba(255,255,255,.2)',
           }} />
-          <span>InstaReplier</span>
+          <span>Oxytocin</span>
           <span style={{ fontSize: 10, opacity: 0.8 }}>⚡</span>
         </div>
       </div>
@@ -429,7 +429,7 @@ export function StatusPopover({
             boxShadow: '0 0 0 2px rgba(99,102,241,.14)',
           }} />
           <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-.01em', color: T.body }}>
-            InstaReplier
+            Oxytocin
           </span>
           <span style={{ flex: 1 }} />
           <button

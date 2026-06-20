@@ -130,7 +130,7 @@ export function ReplyPopover({
       {/* Branding */}
       <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
         <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">
-          Replier
+          Oxytocin
         </span>
       </div>
     </div>

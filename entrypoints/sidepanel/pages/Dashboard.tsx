@@ -97,7 +97,7 @@ export function Dashboard({ onEditContact, onViewConversation }: DashboardProps)
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: T.bodyMid, marginBottom: 5 }}>No contacts yet</div>
           <div style={{ fontSize: 11, color: T.muted, maxWidth: 200, lineHeight: 1.5 }}>
-            Open a chat on Instagram and Replier will detect the contact automatically.
+            Open a chat on Instagram and Oxytocin will detect the contact automatically.
           </div>
         </div>
       ) : (

@@ -29,7 +29,7 @@ export const claudeProvider: LLMProvider = {
     const apiKey = await getApiKey();
     if (!apiKey) {
       throw new Error(
-        'API not configured. Set an API key in Replier settings.',
+        'API not configured. Set an API key in Oxytocin settings.',
       );
     }
 
