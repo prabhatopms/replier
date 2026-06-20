@@ -10,10 +10,6 @@ import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 export default defineContentScript({
   matches: [
     'https://www.instagram.com/direct/*',
-    'https://web.whatsapp.com/*',
-    'https://www.messenger.com/*',
-    'https://x.com/messages/*',
-    'https://www.linkedin.com/messaging/*',
   ],
   cssInjectionMode: 'ui',
 
