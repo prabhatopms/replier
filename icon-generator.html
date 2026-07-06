@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Oxytocin — Icon Generator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0f0f14;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #fff;
+    gap: 48px;
+  }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; opacity: .9; }
+  p  { font-size: 13px; opacity: .5; margin-top: 6px; text-align: center; line-height: 1.6; }
+
+  .row {
+    display: flex;
+    align-items: flex-end;
+    gap: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .label {
+    font-size: 11px;
+    opacity: .4;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .export-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .btn {
+    margin-top: 8px;
+    padding: 10px 28px;
+    background: #4f46e5;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .01em;
+  }
+  .btn:hover { background: #4338ca; }
+
+  canvas { display: none; }
+  #download-links { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  #download-links a {
+    padding: 8px 18px;
+    background: #1e1e2a;
+    border: 1px solid #2e2e3e;
+    border-radius: 8px;
+    color: #a5b4fc;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  #download-links a:hover { background: #2a2a3a; }
+</style>
+</head>
+<body>
+
+<div>
+  <h1>Oxytocin — Icon</h1>
+  <p>Your brain's bonding chemical. Engineered as software.</p>
+</div>
+
+<!-- Master SVG (512×512) -->
+<div class="tile">
+  <svg id="master" width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Background gradient: deep indigo → violet -->
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"   stop-color="#5b21b6"/>
+        <stop offset="55%"  stop-color="#4f46e5"/>
+        <stop offset="100%" stop-color="#312e81"/>
+      </linearGradient>
+
+      <!-- Soft inner glow on bubble -->
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+
+      <!-- Subtle drop shadow under bubble -->
+      <filter id="shadow" x="-10%" y="-10%" width="130%" height="140%">
+        <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#1e1256" flood-opacity=".45"/>
+      </filter>
+
+      <clipPath id="round">
+        <rect width="512" height="512" rx="112" ry="112"/>
+      </clipPath>
+    </defs>
+
+    <!-- Rounded square background -->
+    <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+    <!-- Subtle texture grain overlay -->
+    <rect width="512" height="512" rx="112" fill="url(#bg)" opacity=".0"/>
+
+    <!-- Soft highlight top-left -->
+    <ellipse cx="170" cy="140" rx="160" ry="110"
+      fill="white" opacity=".055"/>
+
+    <!-- ── Main chat bubble ── -->
+    <!-- Body: rounded rect -->
+    <g filter="url(#shadow)">
+      <rect x="104" y="102" width="298" height="230" rx="46" ry="46"
+        fill="white" opacity=".97"/>
+
+      <!-- Tail: bottom-left pointing down -->
+      <!-- A custom path for a natural bubble tail -->
+      <path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z"
+        fill="white" opacity=".97"/>
+    </g>
+
+    <!-- ── Molecule / neural nodes inside bubble ── -->
+    <!-- 3 nodes connected — like a molecular ring fragment or neural net -->
+    <!-- Forms an upward-pointing triangle: bonding motif -->
+
+    <!-- Connection lines (slightly thicker for visibility) -->
+    <line x1="200" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+    <line x1="312" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+    <line x1="200" y1="268" x2="312" y2="268" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+
+    <!-- Extra bond lines (double bond style, chemistry vibe) -->
+    <line x1="228" y1="220" x2="256" y2="172" stroke="#e0e7ff" stroke-width="3.5" stroke-linecap="round" opacity=".5" stroke-dasharray="4 6"/>
+
+    <!-- Node circles -->
+    <!-- Top node -->
+    <circle cx="256" cy="172" r="26" fill="#4f46e5"/>
+    <circle cx="256" cy="172" r="16" fill="white"/>
+
+    <!-- Bottom-left node -->
+    <circle cx="200" cy="268" r="26" fill="#4f46e5"/>
+    <circle cx="200" cy="268" r="16" fill="white"/>
+
+    <!-- Bottom-right node -->
+    <circle cx="312" cy="268" r="26" fill="#4f46e5"/>
+    <circle cx="312" cy="268" r="16" fill="white"/>
+
+    <!-- Small central dot (bonding point) -->
+    <circle cx="256" cy="236" r="7" fill="#818cf8" opacity=".6"/>
+  </svg>
+  <div class="label">512 × 512 — master</div>
+</div>
+
+<!-- Size previews -->
+<div>
+  <div class="row">
+    <div class="tile">
+      <svg width="128" height="128" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <use href="#master-content"/>
+      </svg>
+      <!-- Just re-render inline for previews -->
+      <div class="label">128px</div>
+    </div>
+  </div>
+</div>
+
+<!-- Previews at every required Chrome size -->
+<div class="export-grid">
+  <div class="tile">
+    <svg width="128" height="128" viewBox="0 0 512 512"><use xlink:href="#master-defs"/><rect width="512" height="512" rx="112" fill="url(#bg)"/><ellipse cx="170" cy="140" rx="160" ry="110" fill="white" opacity=".055"/><g filter="url(#shadow)"><rect x="104" y="102" width="298" height="230" rx="46" fill="white" opacity=".97"/><path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z" fill="white" opacity=".97"/></g><line x1="200" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="312" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="200" y1="268" x2="312" y2="268" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><circle cx="256" cy="172" r="26" fill="#4f46e5"/><circle cx="256" cy="172" r="16" fill="white"/><circle cx="200" cy="268" r="26" fill="#4f46e5"/><circle cx="200" cy="268" r="16" fill="white"/><circle cx="312" cy="268" r="26" fill="#4f46e5"/><circle cx="312" cy="268" r="16" fill="white"/><circle cx="256" cy="236" r="7" fill="#818cf8" opacity=".6"/></svg>
+    <div class="label">128px</div>
+  </div>
+  <div class="tile">
+    <svg width="96" height="96" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="url(#bg)"/><ellipse cx="170" cy="140" rx="160" ry="110" fill="white" opacity=".055"/><g filter="url(#shadow)"><rect x="104" y="102" width="298" height="230" rx="46" fill="white" opacity=".97"/><path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z" fill="white" opacity=".97"/></g><line x1="200" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="312" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="200" y1="268" x2="312" y2="268" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><circle cx="256" cy="172" r="26" fill="#4f46e5"/><circle cx="256" cy="172" r="16" fill="white"/><circle cx="200" cy="268" r="26" fill="#4f46e5"/><circle cx="200" cy="268" r="16" fill="white"/><circle cx="312" cy="268" r="26" fill="#4f46e5"/><circle cx="312" cy="268" r="16" fill="white"/><circle cx="256" cy="236" r="7" fill="#818cf8" opacity=".6"/></svg>
+    <div class="label">96px</div>
+  </div>
+  <div class="tile">
+    <svg width="48" height="48" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="url(#bg)"/><g filter="url(#shadow)"><rect x="104" y="102" width="298" height="230" rx="46" fill="white" opacity=".97"/><path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z" fill="white" opacity=".97"/></g><line x1="200" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="312" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><line x1="200" y1="268" x2="312" y2="268" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/><circle cx="256" cy="172" r="26" fill="#4f46e5"/><circle cx="256" cy="172" r="16" fill="white"/><circle cx="200" cy="268" r="26" fill="#4f46e5"/><circle cx="200" cy="268" r="16" fill="white"/><circle cx="312" cy="268" r="26" fill="#4f46e5"/><circle cx="312" cy="268" r="16" fill="white"/></svg>
+    <div class="label">48px</div>
+  </div>
+  <div class="tile">
+    <svg width="16" height="16" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="url(#bg)"/><rect x="104" y="102" width="298" height="230" rx="46" fill="white" opacity=".97"/><path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z" fill="white" opacity=".97"/><circle cx="256" cy="172" r="26" fill="#4f46e5"/><circle cx="200" cy="268" r="26" fill="#4f46e5"/><circle cx="312" cy="268" r="26" fill="#4f46e5"/></svg>
+    <div class="label">16px</div>
+  </div>
+</div>
+
+<!-- Export buttons -->
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+  <button class="btn" onclick="exportAll()">⬇ Export All Sizes as PNG</button>
+  <div id="download-links"></div>
+  <p>Or right-click the 512px master above → "Save Image As" for a quick grab.</p>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+  // The icon SVG markup (self-contained, no defs references)
+  function iconSVG(size) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg${size}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#5b21b6"/>
+      <stop offset="55%"  stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg${size})"/>
+  <ellipse cx="170" cy="140" rx="160" ry="110" fill="white" opacity=".055"/>
+  <rect x="104" y="102" width="298" height="230" rx="46" fill="white" opacity=".97"/>
+  <path d="M 152 330 Q 130 370 108 400 Q 148 375 178 342 Z" fill="white" opacity=".97"/>
+  <line x1="200" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+  <line x1="312" y1="268" x2="256" y2="172" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+  <line x1="200" y1="268" x2="312" y2="268" stroke="#c7d2fe" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+  <circle cx="256" cy="172" r="26" fill="#4f46e5"/>
+  <circle cx="256" cy="172" r="16" fill="white"/>
+  <circle cx="200" cy="268" r="26" fill="#4f46e5"/>
+  <circle cx="200" cy="268" r="16" fill="white"/>
+  <circle cx="312" cy="268" r="26" fill="#4f46e5"/>
+  <circle cx="312" cy="268" r="16" fill="white"/>
+  <circle cx="256" cy="236" r="7" fill="#818cf8" opacity=".6"/>
+</svg>`;
+  }
+
+  async function svgToPng(svgString, size) {
+    return new Promise((resolve) => {
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const url  = URL.createObjectURL(blob);
+      const img  = new Image();
+      img.onload = () => {
+        const canvas = document.getElementById('canvas');
+        canvas.width  = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = url;
+    });
+  }
+
+  async function exportAll() {
+    const sizes = [128, 96, 48, 32, 16, 512];
+    const links = document.getElementById('download-links');
+    links.innerHTML = '<span style="font-size:12px;opacity:.4">Generating…</span>';
+
+    const anchors = [];
+    for (const size of sizes) {
+      const png = await svgToPng(iconSVG(size), size);
+      const a   = document.createElement('a');
+      a.href     = png;
+      a.download = `oxytocin-icon-${size}.png`;
+      a.textContent = `${size}×${size} PNG`;
+      anchors.push(a);
+    }
+
+    links.innerHTML = '';
+    anchors.forEach(a => links.appendChild(a));
+  }
+</script>
+
+</body>
+</html>
