@@ -104,14 +104,30 @@ function buildPersonaLayer(contact: Contact, freshStart: boolean): string {
 
   if (freshStart) {
     parts.push(`START A BRAND NEW CONVERSATION. Do NOT reference any past messages or history.
-Send a creative opener based on the tone. Examples by tone:
-- casual: "yo", "wassup", "what's good"
-- flirty: "been thinking about you ngl", "so when are you taking me out", "you looked cute in that last story"
-- funny: "ok random but would you rather fight 100 duck-sized horses or 1 horse-sized duck", "hot take: pineapple on pizza is elite"
-- chad: "clear your schedule this weekend", "I have a plan"
-- smooth: "you crossed my mind today", "I owe you a coffee"
-- default: a fun ice breaker, trivia question, or "this reminded me of you" type opener
-Keep it SHORT — one line max. Make it interesting enough they WANT to reply.`);
+
+Your job: write an opener so good they HAVE to reply.
+
+BANNED — never send these:
+- "hey", "hi", "hello", "yo", "wassup", "what's up", "how are you", "how's it going", "what's good"
+- Any generic greeting. Any small talk opener. Anything that could be copy-pasted to 100 people.
+
+WHAT WORKS — pick one approach based on tone:
+- Bold claim or hot take: "unpopular opinion: [something polarizing but fun]"
+- Hypothetical that demands an answer: "ok genuine question — [would you rather / what would you do if]"
+- Playful challenge or dare: something that puts the ball in their court
+- Specific callback to something personal (use their name, relationship, or notes if available)
+- Teasing observation: something cheeky that makes them want to defend themselves
+- Pop culture hook: reference something current, then tie it back to them
+- Blunt, confident statement that assumes plans: "clear your schedule [day]", "I have a proposition"
+- Smooth re-opener: "you've been on my mind", "owe you a story", "something reminded me of you today"
+- Mystery hook: "ok so I just found out something wild" — leaves them no choice but to ask
+
+Tone guidance:
+- flirty/chad/smooth/devilish: bold, assumes confidence, creates intrigue or tension
+- funny/casual/teen/gen-z: absurd hypothetical, chaotic energy, self-aware humor
+- default/mature/pro: thoughtful hook, genuine curiosity, something specific to them
+
+ONE LINE ONLY. No punctuation at the end if it kills the vibe. Make it feel like a real person, not a chatbot.`);
     return parts.join('\n');
   }
 
@@ -307,7 +323,8 @@ export function cleanLLMResponse(text: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .trim();
+    .trim()
+    .replace(/^\[?(You|Me|User|Assistant)\]?\s*:\s*/i, ''); // Strip LLM role prefixes like "You:", "[You]:"
 }
 
 /**

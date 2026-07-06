@@ -75,7 +75,7 @@ export async function generateReply(
     // Notify content script that reply is ready
     notifyContentScript(contactId, 'ready', pendingReply.id, cleaned, tone);
 
-    return { replyId: pendingReply.id, text: replyText };
+    return { replyId: pendingReply.id, text: cleaned };
   } catch (error) {
     console.error('[Replier] Generation error:', error);
     notifyContentScript(

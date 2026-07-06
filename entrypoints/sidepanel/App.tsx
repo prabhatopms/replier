@@ -28,8 +28,10 @@ const T = {
 export function App() {
   const [page, setPage] = useState<Page>({ name: 'dashboard' });
   const navigate = (p: Page) => setPage(p);
-  const [widgetVisible, setWidgetVisible] = useState(true);
-  const [activeTabHasWidget, setActiveTabHasWidget] = useState(false);
+  // Only true once the content script positively confirms the widget is visible.
+  // Any uncertainty (no response, not injected yet, etc.) falls back to false so
+  // the "show" button stays available rather than disappearing on a bug we can't see.
+  const [widgetVisible, setWidgetVisible] = useState(false);
 
   useEffect(() => {
     const checkVisibility = async () => {
@@ -37,15 +39,12 @@ export function App() {
         const tabs = await browser.tabs.query({ active: true, currentWindow: true });
         if (tabs[0]?.id) {
           const res = await browser.tabs.sendMessage(tabs[0].id, { type: 'GET_POPOVER_VISIBILITY' }).catch(() => null);
-          if (res && typeof res.visible === 'boolean') {
-            setWidgetVisible(res.visible);
-            setActiveTabHasWidget(true);
-            return;
-          }
+          setWidgetVisible(!!res && typeof res.visible === 'boolean' && res.visible);
+          return;
         }
-        setActiveTabHasWidget(false);
+        setWidgetVisible(false);
       } catch {
-        setActiveTabHasWidget(false);
+        setWidgetVisible(false);
       }
     };
 
@@ -57,8 +56,10 @@ export function App() {
   const handleShowWidget = async () => {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id) {
-      await browser.tabs.sendMessage(tabs[0].id, { type: 'SHOW_POPOVER' }).catch(() => null);
-      setWidgetVisible(true);
+      const res = await browser.tabs.sendMessage(tabs[0].id, { type: 'SHOW_POPOVER' }).catch(() => null);
+      // Only mark it visible if the content script actually acknowledged the message;
+      // if it's not injected (the reload bug), the next poll will keep the button showing.
+      if (res !== null) setWidgetVisible(true);
     }
   };
   const isDashboard = page.name === 'dashboard';
@@ -165,7 +166,7 @@ export function App() {
 
       {/* ── Page content ── */}
       <main style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {activeTabHasWidget && !widgetVisible && (
+        {!widgetVisible && (
           <button
             onClick={handleShowWidget}
             style={{

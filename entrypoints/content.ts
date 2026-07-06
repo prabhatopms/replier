@@ -470,6 +470,7 @@ export default defineContentScript({
         type: 'GENERATE_REPLY',
         contactId: currentContactId,
         tone: replyTone,
+        freshStart: isNewConversation || undefined,
       } satisfies ExtensionMessage);
     }
 
@@ -531,6 +532,7 @@ export default defineContentScript({
         type: 'GENERATE_REPLY',
         contactId: currentContactId,
         tone: replyTone,
+        freshStart: isNewConversation || undefined,
       } satisfies ExtensionMessage);
     }
 
