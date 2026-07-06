@@ -8,28 +8,33 @@ import type { ToneType, CustomTone } from '@/types/contact';
 import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 
 export default defineContentScript({
+  // Matches all of instagram.com (not just /direct/*) because Chrome only
+  // evaluates content_scripts.matches at document-creation time — it does NOT
+  // re-inject when Instagram's SPA router navigates into /direct/* via
+  // history.pushState. Without this, a user who opens instagram.com on the
+  // feed and clicks into Messages never gets the content script until a hard
+  // refresh. Actual DM functionality still only activates once the URL
+  // matches /direct/*, via resolveAdapter() below.
   matches: [
-    'https://www.instagram.com/direct/*',
+    'https://www.instagram.com/*',
   ],
   cssInjectionMode: 'ui',
 
   async main(ctx) {
-    const adapter = resolveAdapter(window.location.href);
-    if (!adapter) {
-      console.log('[Replier] No adapter found for this page');
-      return;
-    }
+    let adapter = resolveAdapter(window.location.href);
+    let interceptorInjected = false;
 
-    console.log(`[Replier] Loaded ${adapter.name} adapter`);
-
-    // Inject network interceptor
-    try {
-      await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
-        keepInDom: true,
-      });
-      console.log('[Replier] Network interceptor injected');
-    } catch {
-      console.log('[Replier] No interceptor for this platform, using DOM-only');
+    async function ensureInterceptorInjected(): Promise<void> {
+      if (interceptorInjected || !adapter) return;
+      interceptorInjected = true;
+      try {
+        await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
+          keepInDom: true,
+        });
+        console.log('[Replier] Network interceptor injected');
+      } catch {
+        console.log('[Replier] No interceptor for this platform, using DOM-only');
+      }
     }
 
     // =========================================================================
@@ -867,7 +872,20 @@ export default defineContentScript({
       window,
       'wxt:locationchange' as keyof WindowEventMap,
       (() => {
-        if (!adapter.matchUrl(window.location.href)) return;
+        // Re-resolve on every navigation — the page may be entering or
+        // leaving /direct/* for the first time in this document's lifetime
+        // (matches is now the whole origin; see comment on `matches` above).
+        const newAdapter = resolveAdapter(window.location.href);
+        if (!newAdapter) {
+          if (adapter) {
+            adapter = null;
+            hidePopover();
+          }
+          return;
+        }
+        const firstActivation = !adapter;
+        adapter = newAdapter;
+
         // Reset all state for the new conversation
         currentContactId = null;
         currentContactName = '';
@@ -883,8 +901,15 @@ export default defineContentScript({
         replyId = '';
         errorMessage = '';
         popoverStatus = 'idle';
+
+        if (firstActivation) {
+          console.log(`[Replier] Loaded ${adapter.name} adapter`);
+          ctx.setTimeout(setupThreadClickListener, 2000);
+        }
         // Short initial delay — detectAndSetContact has its own retry loop
-        ctx.setTimeout(detectAndSetContact, 200);
+        ensureInterceptorInjected().then(() => {
+          ctx.setTimeout(detectAndSetContact, 200);
+        });
       }) as EventListener,
     );
 
@@ -893,11 +918,14 @@ export default defineContentScript({
     // so wxt:locationchange alone is unreliable. We listen for clicks
     // on the thread list and re-detect after a short delay.
     let lastDetectedUrl = '';
+    let threadClickListenerAttached = false;
     function setupThreadClickListener(): void {
+      if (threadClickListenerAttached) return;
       const threadList = document.querySelector(
         'div[aria-label="Thread list"][role="navigation"], [data-pagelet="IGDInboxThreadListScrollableAreaPagelet"]',
       );
       if (threadList) {
+        threadClickListenerAttached = true;
         threadList.addEventListener('click', () => {
           // Debounce: only trigger if URL changed or enough time passed
           setTimeout(() => {
@@ -927,10 +955,17 @@ export default defineContentScript({
       }
     }
 
-    // Initial contact detection
-    ctx.setTimeout(detectAndSetContact, 1000);
-    // Attach thread click listener after a brief delay for DOM to be ready
-    ctx.setTimeout(setupThreadClickListener, 2000);
+    // If the document was already on a matching /direct/* URL at load time,
+    // activate immediately. Otherwise wait for the wxt:locationchange handler
+    // above to activate once the user SPA-navigates into Direct.
+    if (adapter) {
+      console.log(`[Replier] Loaded ${adapter.name} adapter`);
+      await ensureInterceptorInjected();
+      ctx.setTimeout(detectAndSetContact, 1000);
+      ctx.setTimeout(setupThreadClickListener, 2000);
+    } else {
+      console.log('[Replier] Instagram loaded — waiting for Direct navigation');
+    }
 
     // Clean up
     ctx.onInvalidated(() => {
