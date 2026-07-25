@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import type { Contact, ToneType, CustomTone } from '@/types/contact';
 import { ConversationGoal, GOAL_LABELS, TONE_LABELS, BUILT_IN_TONES, type BuiltInTone } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
+import type { Platform } from '@/types/platform';
+import { PLATFORM_META, platformMeta } from '@/lib/platforms/meta';
 
 interface ContactEditorProps {
   contactId?: string;
@@ -87,7 +89,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
   const [form, setForm] = useState({
     displayName: '',
     platformUserId: '',
-    platform: 'instagram' as const,
+    platform: 'instagram' as Platform,
     relationship: '',
     goal: ConversationGoal.CASUAL_CHAT,
     goalDescription: '',
@@ -134,7 +136,7 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
         setForm({
           displayName: c.displayName,
           platformUserId: c.platformUserId,
-          platform: c.platform as 'instagram',
+          platform: c.platform,
           relationship: c.relationship,
           goal: c.goal,
           goalDescription: c.goalDescription,
@@ -225,12 +227,26 @@ export function ContactEditor({ contactId, onBack, onSaved }: ContactEditorProps
             />
           </div>
           <div>
-            <div style={fieldLabel}>Username / ID</div>
+            <div style={fieldLabel}>Platform</div>
+            <select
+              style={inputStyle}
+              value={form.platform}
+              onChange={(e) => setForm({ ...form, platform: e.target.value as Platform })}
+            >
+              {(['instagram', 'whatsapp'] as Platform[]).map((p) => (
+                <option key={p} value={p}>{PLATFORM_META[p].label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div style={fieldLabel}>
+              {platformMeta(form.platform).handleStyle === 'phone' ? 'Phone / Name' : 'Username / ID'}
+            </div>
             <input
               style={inputStyle}
               value={form.platformUserId}
               onChange={(e) => setForm({ ...form, platformUserId: e.target.value })}
-              placeholder="instagram_handle"
+              placeholder={platformMeta(form.platform).handleStyle === 'phone' ? 'Exact chat name in WhatsApp' : 'instagram_handle'}
               onFocus={(e) => { e.target.style.borderColor = T.borderFocus; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.1)'; }}
               onBlur={(e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; }}
             />

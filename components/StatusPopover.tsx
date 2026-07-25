@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ToneType, CustomTone } from '@/types/contact';
+import type { Platform } from '@/types/platform';
+import { formatHandle, platformMeta } from '@/lib/platforms/meta';
 import { ToneSelector } from './ToneSelector';
 
 export type PopoverStatus = 'idle' | 'detecting' | 'generating' | 'ready' | 'error';
@@ -36,6 +38,8 @@ export interface ContactContext {
 interface StatusPopoverProps {
   status: PopoverStatus;
   contactName: string;
+  /** Drives handle formatting and platform wording. */
+  platform?: Platform;
   replyText: string;
   replyId: string;
   tone: ToneType;
@@ -211,6 +215,7 @@ function groupMessages(msgs: string[]) {
 export function StatusPopover({
   status,
   contactName,
+  platform,
   replyText,
   replyId,
   tone,
@@ -238,6 +243,11 @@ export function StatusPopover({
   isNewContact,
   onDismissNewContact,
 }: StatusPopoverProps) {
+  // WhatsApp identifies people by phone number or address-book name, so the
+  // "@handle" form Instagram uses would be wrong there.
+  const handle = formatHandle(platform, contactName);
+  const meta = platformMeta(platform);
+
   const [isMinimized, setIsMinimized] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showContext, setShowContext] = useState(false);
@@ -504,7 +514,7 @@ export function StatusPopover({
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
                   <span style={{ fontSize: 11.5, color: T.muted }}>Context for</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.indigo, letterSpacing: '-.01em' }}>
-                    @{contactContext.username}
+                    {formatHandle(platform, contactContext.username)}
                   </span>
                 </div>
                 {onFlushAndRebuild && (
@@ -723,7 +733,7 @@ export function StatusPopover({
               </svg>
             </div>
             <span style={{ fontSize: 11.5, fontWeight: 500, color: '#15803d', flex: 1 }}>
-              New contact <strong>@{contactName}</strong> added
+              New contact <strong>{handle}</strong> added
             </span>
             {onDismissNewContact && (
               <button
@@ -826,8 +836,8 @@ export function StatusPopover({
             </div>
             <p style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, margin: '0 auto 12px', maxWidth: 250 }}>
               {contactName
-                ? <><span style={{ fontWeight: 600, color: '#374151' }}>@{contactName}</span> — listening for new messages.</>
-                : 'Open an Instagram DM to get started.'
+                ? <><span style={{ fontWeight: 600, color: '#374151' }}>{handle}</span> — listening for new messages.</>
+                : `${meta.openConversationHint} to get started.`
               }
             </p>
             {contactName && (
@@ -894,7 +904,7 @@ export function StatusPopover({
               ))}
             </div>
             <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0 0 3px' }}>
-              Generating reply for @{contactName}…
+              Generating reply for {handle}…
             </p>
             <p style={{ fontSize: 10.5, color: '#9ca3af', lineHeight: 1.5, maxWidth: 220, margin: '0 auto' }}>
               Analyzing context, tone, and chat memory.

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Contact } from '@/types/contact';
 import { GOAL_LABELS, getToneDisplayName } from '@/types/contact';
 import type { ExtensionMessage } from '@/lib/messaging/types';
+import { formatHandle, platformMeta } from '@/lib/platforms/meta';
 
 interface DashboardProps {
   onEditContact: (contactId: string) => void;
@@ -97,7 +98,7 @@ export function Dashboard({ onEditContact, onViewConversation }: DashboardProps)
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: T.bodyMid, marginBottom: 5 }}>No contacts yet</div>
           <div style={{ fontSize: 11, color: T.muted, maxWidth: 200, lineHeight: 1.5 }}>
-            Open a chat on Instagram and Oxytocin will detect the contact automatically.
+            Open a chat on Instagram or WhatsApp and Oxytocin will detect the contact automatically.
           </div>
         </div>
       ) : (
@@ -147,8 +148,10 @@ export function Dashboard({ onEditContact, onViewConversation }: DashboardProps)
                         {contact.isActive ? 'Active' : 'Paused'}
                       </span>
                     </div>
-                    <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>
-                      @{contact.platformUserId}
+                    <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span>{formatHandle(contact.platform, contact.platformUserId)}</span>
+                      <span style={{ color: T.border }}>·</span>
+                      <span>{platformMeta(contact.platform).label}</span>
                     </div>
 
                     {/* Badges */}

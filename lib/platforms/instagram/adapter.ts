@@ -5,6 +5,8 @@ import type {
 } from '@/types/platform';
 import { v4 as uuid } from 'uuid';
 import { SELECTORS, querySelector, querySelectorAll } from './selectors';
+import { watchConversationKey } from '../conversation-watch';
+import { PLATFORM_META } from '../meta';
 
 /**
  * Minified class names used by Instagram for message alignment.
@@ -17,6 +19,10 @@ const SENT_PARENT_CLASS = 'x13a6bvl';
 export const instagramAdapter: PlatformAdapter = {
   name: 'instagram',
 
+  meta: PLATFORM_META.instagram,
+
+  hasInterceptor: true,
+
   matchUrl(url: string): boolean {
     return /instagram\.com\/direct/.test(url);
   },
@@ -28,111 +34,11 @@ export const instagramAdapter: PlatformAdapter = {
   extractMessages(container: HTMLElement): ExtractedMessage[] {
     const messages: ExtractedMessage[] = [];
     const bubbles = querySelectorAll(SELECTORS.messageBubble, container);
-
-    // Use a base timestamp and decrement for ordering.
-    // Instagram shows messages newest-at-bottom, so we assign timestamps
-    // in order: oldest bubble gets the earliest timestamp.
-    const now = Date.now();
-    let lastKnownTimestamp: number | null = null;
-
-    // First pass: find any real timestamps to anchor ordering
-    for (let i = bubbles.length - 1; i >= 0; i--) {
-      const ts = extractTimestamp(bubbles[i]);
-      if (ts) { lastKnownTimestamp = ts; break; }
-    }
-
-    const baseTime = lastKnownTimestamp || now;
+    const baseTime = findAnchorTimestamp(bubbles) || Date.now();
 
     for (let i = 0; i < bubbles.length; i++) {
-      const bubble = bubbles[i];
-      const textEl = querySelector(SELECTORS.messageText, bubble);
-      let text = textEl?.textContent?.trim() || '';
-      let contentType: 'text' | 'image' | 'video' | 'link' = 'text';
-      let mediaUrl: string | undefined;
-
-      if (!text) {
-        // 1. Check for shared post or reel link
-        const shareLink = bubble.querySelector<HTMLAnchorElement>('a[href*="/reel/"], a[href*="/p/"]');
-        if (shareLink) {
-          const href = shareLink.getAttribute('href') || '';
-          const fullUrl = href.startsWith('http') ? href : `https://www.instagram.com${href}`;
-          const caption = extractBubbleCardText(bubble);
-          text = caption
-            ? `[Shared Reel/Post: ${fullUrl} — "${caption}"]`
-            : `[Shared Reel/Post: ${fullUrl}]`;
-          contentType = 'link';
-        } else {
-          // 2. Check for other links
-          const link = bubble.querySelector<HTMLAnchorElement>('a[href]');
-          if (link) {
-            const href = link.getAttribute('href') || '';
-            if (!href.includes('instagram.com/direct') && !href.startsWith('/direct')) {
-              const preview = extractBubbleCardText(bubble);
-              text = preview ? `[Link: ${href} — "${preview}"]` : `[Link: ${href}]`;
-              contentType = 'link';
-            }
-          }
-        }
-
-        // 3. Check for images
-        if (!text) {
-          const img = bubble.querySelector<HTMLImageElement>('img');
-          if (img) {
-            const src = img.getAttribute('src') || '';
-            const isEmoji = src.includes('/emoji/') || img.classList.contains('emoji');
-            if (isEmoji) {
-              text = img.getAttribute('alt') || '😀';
-            } else {
-              text = '[Sent an image]';
-              contentType = 'image';
-              // Capture CDN URL for vision AI (scontent CDN, not static assets)
-              if (src.startsWith('http') && src.includes('cdninstagram')) {
-                mediaUrl = src;
-              }
-            }
-          } else {
-            // 4. Check for videos
-            const video = bubble.querySelector<HTMLVideoElement>('video');
-            if (video) {
-              text = '[Sent a video]';
-              contentType = 'video';
-            }
-          }
-        }
-
-        // 5. Check for voice messages
-        if (!text) {
-          const isVoice = bubble.querySelector('audio') || bubble.querySelector('[aria-label*="audio"]') || bubble.querySelector('[aria-label*="voice"]');
-          if (isVoice) {
-            text = '[Sent a voice message]';
-            contentType = 'video';
-          }
-        }
-      }
-
-      if (!text) continue;
-
-      const sender = detectSender(bubble);
-      const realTimestamp = extractTimestamp(bubble);
-
-      // Use real timestamp if available, otherwise interpolate from position
-      // Messages are ordered top=oldest, bottom=newest
-      const timestamp = realTimestamp ||
-        (baseTime - (bubbles.length - 1 - i) * 60000); // ~1 min apart
-
-      // Deterministic ID based on content + sender (not random UUID)
-      // This allows dedup to work across multiple scrapes
-      const contentHash = simpleHash(text + sender);
-      const id = `dom-${contentHash}`;
-
-      messages.push({
-        id,
-        sender,
-        content: text,
-        contentType,
-        mediaUrl,
-        timestamp,
-      });
+      const parsed = parseBubble(bubbles[i], i, bubbles.length, baseTime);
+      if (parsed) messages.push(parsed);
     }
 
     return messages;
@@ -194,14 +100,43 @@ export const instagramAdapter: PlatformAdapter = {
     return match?.[1] || null;
   },
 
+  /**
+   * Prefer the thread ID from the URL. Instagram does not always update the
+   * path when switching threads from the sidebar, so fall back to the profile
+   * link in the conversation header, which always tracks the open thread.
+   */
+  getConversationKey(): string | null {
+    const threadId = this.getThreadId?.();
+    if (threadId) return `t:${threadId}`;
+
+    const profileLink = querySelector(SELECTORS.profileLink);
+    const href = profileLink?.getAttribute('href');
+    return href ? `u:${href}` : null;
+  },
+
+  observeConversationChange(callback: () => void): () => void {
+    return watchConversationKey(() => this.getConversationKey(), callback);
+  },
+
   observeNewMessages(
     callback: (msg: ExtractedMessage) => void,
   ): MutationObserver {
     const container = this.getMessageContainer();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastBubbleCount = container
-      ? querySelectorAll(SELECTORS.messageBubble, container).length
-      : 0;
+
+    // Track bubbles by their stable ID rather than by count/position.
+    // Instagram virtualizes its message list — old bubbles get pruned from
+    // the DOM at the same time new ones are appended at the bottom, so a
+    // plain length comparison can stay flat (or even drop) on a real new
+    // message, and slicing by index then grabs whatever bubble now happens
+    // to sit at that position, which is often a stale one, not the new one.
+    // That combination is what silently swallows the contact's latest
+    // message and occasionally replays an old one as if it were current.
+    let seenIds = new Set(
+      container
+        ? querySelectorAll(SELECTORS.messageBubble, container).map(bubbleIdentity)
+        : [],
+    );
 
     const observer = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -209,32 +144,20 @@ export const instagramAdapter: PlatformAdapter = {
         const currentContainer = this.getMessageContainer();
         if (!currentContainer) return;
 
-        const currentBubbles = querySelectorAll(
-          SELECTORS.messageBubble,
-          currentContainer,
-        );
-        if (currentBubbles.length <= lastBubbleCount) return;
+        const bubbles = querySelectorAll(SELECTORS.messageBubble, currentContainer);
+        const baseTime = findAnchorTimestamp(bubbles) || Date.now();
+        const nextSeenIds = new Set<string>();
 
-        // Process only new bubbles (at the end)
-        const newBubbles = currentBubbles.slice(lastBubbleCount);
-        lastBubbleCount = currentBubbles.length;
+        for (let i = 0; i < bubbles.length; i++) {
+          const key = bubbleIdentity(bubbles[i]);
+          nextSeenIds.add(key);
+          if (seenIds.has(key)) continue;
 
-        for (const bubble of newBubbles) {
-          const textEl = querySelector(SELECTORS.messageText, bubble);
-          const text = textEl?.textContent?.trim();
-          if (!text) continue;
-
-          const sender = detectSender(bubble);
-          const timestamp = extractTimestamp(bubble) || Date.now();
-
-          callback({
-            id: uuid(),
-            sender,
-            content: text,
-            contentType: 'text',
-            timestamp,
-          });
+          const parsed = parseBubble(bubbles[i], i, bubbles.length, baseTime);
+          if (parsed) callback(parsed);
         }
+
+        seenIds = nextSeenIds;
       }, 300);
     });
 
@@ -394,22 +317,14 @@ export const instagramAdapter: PlatformAdapter = {
  * Uses a fast class-check path with computed-style fallback.
  */
 function detectSender(bubble: HTMLElement): 'user' | 'contact' {
-  // Fast path: check minified class on the bubble itself
-  if (bubble.classList.contains(SENT_BUBBLE_CLASS)) {
-    return 'user';
-  }
-
-  // Fast path: check for flex-end alignment class on a parent
-  let el: HTMLElement | null = bubble;
-  for (let i = 0; i < 6 && el; i++) {
-    if (el.classList.contains(SENT_PARENT_CLASS)) {
-      return 'user';
-    }
-    el = el.parentElement;
-  }
-
-  // Reliable fallback: check computed styles
-  el = bubble.parentElement;
+  // Primary signal: computed alignment. A reply-to-message capture showed
+  // SENT_BUBBLE_CLASS (x12lizq0) present on a "quoted message" card wrapper —
+  // an element that has nothing to do with who sent the actual bubble. Meta's
+  // atomic CSS classes are shared across components for incidental properties
+  // (cursor, border-radius, etc.), so a bare class match is not trustworthy
+  // as a sent/received signal; computed flex alignment reflects the real
+  // layout decision Instagram made and doesn't share that ambiguity.
+  let el: HTMLElement | null = bubble.parentElement;
   while (el) {
     const style = window.getComputedStyle(el);
     if (
@@ -426,7 +341,162 @@ function detectSender(bubble: HTMLElement): 'user' | 'contact' {
     if (el === document.body) break;
   }
 
+  // Fallback: minified class check, only reached if computed style was
+  // inconclusive (no flex-end/flex-start found walking up to <body>).
+  if (bubble.classList.contains(SENT_BUBBLE_CLASS)) {
+    return 'user';
+  }
+  el = bubble;
+  for (let i = 0; i < 6 && el; i++) {
+    if (el.classList.contains(SENT_PARENT_CLASS)) {
+      return 'user';
+    }
+    el = el.parentElement;
+  }
+
   return 'contact';
+}
+
+type BubbleContent = {
+  text: string;
+  contentType: 'text' | 'image' | 'video' | 'link';
+  mediaUrl?: string;
+};
+
+/**
+ * Pull displayable content out of a single message bubble: plain text,
+ * shared reel/post, other link, image, video, or voice note.
+ *
+ * Shared by `extractMessages` (batch scrape) and `observeNewMessages` (live
+ * diffing) so both paths recognize the same message types. Previously only
+ * the batch path handled anything beyond plain text, so a contact's newest
+ * message arriving live as an image, video, voice note, or shared reel was
+ * silently dropped — `observeNewMessages` would see empty `textContent` and
+ * skip it, even though the bubble was very much there.
+ */
+function extractBubbleContent(bubble: HTMLElement): BubbleContent | null {
+  const textEl = querySelector(SELECTORS.messageText, bubble);
+  const plainText = textEl?.textContent?.trim() || '';
+  if (plainText) return { text: plainText, contentType: 'text' };
+
+  // 1. Shared post or reel link
+  const shareLink = bubble.querySelector<HTMLAnchorElement>('a[href*="/reel/"], a[href*="/p/"]');
+  if (shareLink) {
+    const href = shareLink.getAttribute('href') || '';
+    const fullUrl = href.startsWith('http') ? href : `https://www.instagram.com${href}`;
+    const caption = extractBubbleCardText(bubble);
+    return {
+      text: caption
+        ? `[Shared Reel/Post: ${fullUrl} — "${caption}"]`
+        : `[Shared Reel/Post: ${fullUrl}]`,
+      contentType: 'link',
+    };
+  }
+
+  // 2. Other links
+  const link = bubble.querySelector<HTMLAnchorElement>('a[href]');
+  if (link) {
+    const href = link.getAttribute('href') || '';
+    if (!href.includes('instagram.com/direct') && !href.startsWith('/direct')) {
+      const preview = extractBubbleCardText(bubble);
+      return {
+        text: preview ? `[Link: ${href} — "${preview}"]` : `[Link: ${href}]`,
+        contentType: 'link',
+      };
+    }
+  }
+
+  // 3. Images
+  const img = bubble.querySelector<HTMLImageElement>('img');
+  if (img) {
+    const src = img.getAttribute('src') || '';
+    const isEmoji = src.includes('/emoji/') || img.classList.contains('emoji');
+    if (isEmoji) return { text: img.getAttribute('alt') || '😀', contentType: 'text' };
+
+    // Capture CDN URL for vision AI (scontent CDN, not static assets)
+    const mediaUrl = src.startsWith('http') && src.includes('cdninstagram') ? src : undefined;
+    return { text: '[Sent an image]', contentType: 'image', mediaUrl };
+  }
+
+  // 4. Videos
+  if (bubble.querySelector('video')) {
+    return { text: '[Sent a video]', contentType: 'video' };
+  }
+
+  // 5. Voice messages
+  const isVoice =
+    bubble.querySelector('audio') ||
+    bubble.querySelector('[aria-label*="audio"]') ||
+    bubble.querySelector('[aria-label*="voice"]');
+  if (isVoice) return { text: '[Sent a voice message]', contentType: 'video' };
+
+  return null;
+}
+
+/**
+ * Scan a bubble list for the newest one carrying a real (non-interpolated)
+ * timestamp, to anchor position-based interpolation for the rest.
+ */
+function findAnchorTimestamp(bubbles: HTMLElement[]): number | null {
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const ts = extractTimestamp(bubbles[i]);
+    if (ts) return ts;
+  }
+  return null;
+}
+
+/**
+ * Parse one bubble into a full ExtractedMessage, or null if it carries no
+ * recognizable content (e.g. a date divider or system row).
+ */
+function parseBubble(
+  bubble: HTMLElement,
+  index: number,
+  totalBubbles: number,
+  baseTime: number,
+): ExtractedMessage | null {
+  const content = extractBubbleContent(bubble);
+  if (!content) return null;
+
+  const sender = detectSender(bubble);
+  const realTimestamp = extractTimestamp(bubble);
+
+  // Use the real timestamp if available, otherwise interpolate from position.
+  // Messages are ordered top=oldest, bottom=newest.
+  const timestamp = realTimestamp || baseTime - (totalBubbles - 1 - index) * 60000;
+
+  // Deterministic ID based on content + sender + a coarse time bucket (not a
+  // random UUID) — this allows dedup to work across multiple rescrapes of
+  // the same bubble. The time bucket matters: content+sender alone collides
+  // whenever the same short reply ("haha", "lol", "ok") is sent more than
+  // once, which would silently drop the second real message (see
+  // storeMessagesDeduped, which trusts an ID match unconditionally).
+  const timeBucket = Math.round(timestamp / 60000);
+  const id = `dom-${simpleHash(content.text + sender + timeBucket)}`;
+
+  return {
+    id,
+    sender,
+    content: content.text,
+    contentType: content.contentType,
+    mediaUrl: content.mediaUrl,
+    timestamp,
+  };
+}
+
+/**
+ * A lightweight, position-independent key used only to track "have I already
+ * reported this bubble in this browsing session" for live diffing — deliberately
+ * NOT the same as parseBubble's storage id, which folds in a time bucket that
+ * can drift as bubbles shift position under virtualization. Drift there is
+ * fine (storeMessagesDeduped tolerates it via its own time window); drift
+ * here would make an already-delivered bubble look new again on every
+ * mutation, which the live path can't self-correct the way batch storage can.
+ */
+function bubbleIdentity(bubble: HTMLElement): string {
+  const content = extractBubbleContent(bubble);
+  if (!content) return `empty-${simpleHash(bubble.outerHTML.slice(0, 80))}`;
+  return `${detectSender(bubble)}:${simpleHash(content.text)}`;
 }
 
 /**

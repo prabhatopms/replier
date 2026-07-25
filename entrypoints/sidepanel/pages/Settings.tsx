@@ -532,7 +532,7 @@ export function Settings({ onBack }: SettingsProps) {
         <textarea
           value={customPrompt}
           onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder={`You text on Instagram DMs as the user. Keep replies SHORT (1-2 sentences max). Sound like a real person, not an AI.\n\nNever use formal phrases. Match the conversation vibe.\n\nOutput ONLY the message text. No quotes, no HTML.`}
+          placeholder={`You text on Instagram DMs and WhatsApp chats as the user. Keep replies SHORT (1-2 sentences max). Sound like a real person, not an AI.\n\nNever use formal phrases. Match the conversation vibe.\n\nOutput ONLY the message text. No quotes, no HTML.`}
           rows={8}
           style={{ ...monoInputStyle, resize: 'none', lineHeight: 1.6, fontSize: 11.5 }}
           onFocus={focusStyle}

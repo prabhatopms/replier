@@ -32,8 +32,36 @@ export interface ContactInfo {
   numericUserId?: string;
 }
 
+/**
+ * Presentation and vocabulary differences between platforms, used to keep
+ * UI copy and LLM prompts from hardcoding "Instagram".
+ */
+export interface PlatformMeta {
+  /** Human-readable platform name, e.g. "Instagram" */
+  readonly label: string;
+  /** What a conversation is called here, e.g. "DM" / "chat" */
+  readonly conversationNoun: string;
+  /** What ephemeral posts are called here, e.g. "story" / "status" */
+  readonly storyNoun: string;
+  /**
+   * How a contact is addressed. Instagram has public @handles; WhatsApp
+   * identifies people by phone number, so the UI must not render "@".
+   */
+  readonly handleStyle: 'username' | 'phone';
+  /** Where to point the user when no conversation is open */
+  readonly openConversationHint: string;
+}
+
 export interface PlatformAdapter {
   readonly name: Platform;
+  readonly meta: PlatformMeta;
+
+  /**
+   * Whether a `<name>-interceptor.js` script exists for this platform.
+   * WhatsApp encrypts its traffic end-to-end over WebSocket, so there is
+   * nothing useful to intercept — those platforms are DOM-only.
+   */
+  readonly hasInterceptor: boolean;
 
   // Detection
   matchUrl(url: string): boolean;
@@ -47,6 +75,25 @@ export interface PlatformAdapter {
   observeNewMessages(
     callback: (msg: ExtractedMessage) => void,
   ): MutationObserver;
+
+  /**
+   * Fire `callback` whenever the user switches to a different conversation.
+   *
+   * This cannot be driven by URL changes alone. Instagram usually updates the
+   * path but not always when switching threads via the sidebar, and WhatsApp
+   * Web never changes its URL at all — the whole app lives at /. Each adapter
+   * therefore decides what "the conversation changed" means for its own DOM.
+   *
+   * Returns a disposer that detaches the observation.
+   */
+  observeConversationChange(callback: () => void): () => void;
+
+  /**
+   * A value that changes when — and only when — the open conversation changes.
+   * Used to debounce `observeConversationChange` against unrelated DOM churn
+   * such as incoming messages or typing indicators.
+   */
+  getConversationKey(): string | null;
 
   // Network interception (richer data source)
   getInterceptPatterns(): string[];

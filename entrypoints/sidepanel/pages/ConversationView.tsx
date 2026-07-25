@@ -51,7 +51,7 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   }
 
   async function handleClear() {
-    if (!confirm('Clear all stored messages for this contact? The extension will rescrape from Instagram next time you open their chat.')) return;
+    if (!confirm('Clear all stored messages for this contact? The extension will rescrape next time you open their chat.')) return;
     setClearing(true);
     await browser.runtime.sendMessage({ type: 'CLEAR_HISTORY', contactId } satisfies ExtensionMessage);
     setMessages([]);

@@ -13,6 +13,7 @@ export default defineConfig({
     permissions: ['storage', 'sidePanel', 'activeTab'],
     host_permissions: [
       'https://www.instagram.com/*',
+      'https://web.whatsapp.com/*',
       'https://api.anthropic.com/*',
       'https://generativelanguage.googleapis.com/*',
     ],

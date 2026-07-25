@@ -104,10 +104,18 @@ export async function getLastContactMessage(
 }
 
 /**
+ * A same-instant duplicate must land within this window of an existing
+ * message to be considered "the same event seen twice." Wide enough to
+ * absorb DOM/API arrival skew and timestamp-interpolation slop, narrow
+ * enough that a contact re-sending "haha" hours later is never caught by it.
+ */
+const CONTENT_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+
+/**
  * Store messages with deduplication.
- * Checks for existing messages by timestamp+content to avoid duplicates
- * from overlapping API interception and DOM scraping.
- * Returns the count of newly inserted messages.
+ * Checks for existing messages by ID, and by content+sender+time-proximity
+ * to catch the same message seen twice via overlapping API interception and
+ * DOM scraping. Returns the count of newly inserted messages.
  */
 export async function storeMessagesDeduped(
   contactId: string,
@@ -121,11 +129,18 @@ export async function storeMessagesDeduped(
     .equals(contactId)
     .toArray();
 
-  // Dedup by content + sender (not timestamp — timestamps from DOM are unreliable).
-  // Also check by ID for deterministic IDs (dom-HASH).
-  const existingContentSet = new Set(
-    existingMessages.map((m) => `${m.sender}:${m.content.slice(0, 60).toLowerCase().trim()}`),
-  );
+  // Group existing messages by content+sender so a content match can still be
+  // checked for time proximity — a bare Set can't tell "same event, seen
+  // twice" apart from "same phrase, sent again later," and collapsing those
+  // silently drops real messages (short replies like "haha" or "ok" repeat
+  // constantly in a real conversation).
+  const existingByContentKey = new Map<string, number[]>();
+  for (const m of existingMessages) {
+    const key = `${m.sender}:${m.content.slice(0, 60).toLowerCase().trim()}`;
+    const list = existingByContentKey.get(key);
+    if (list) list.push(m.timestamp);
+    else existingByContentKey.set(key, [m.timestamp]);
+  }
   const existingIdSet = new Set(existingMessages.map((m) => m.id));
 
   const newMessages: Message[] = [];
@@ -133,10 +148,16 @@ export async function storeMessagesDeduped(
     // Skip if we already have this exact ID (deterministic dom-hash IDs)
     if (m.id && existingIdSet.has(m.id)) continue;
 
-    // Skip if content+sender matches an existing message
     const contentKey = `${m.sender}:${m.content.slice(0, 60).toLowerCase().trim()}`;
-    if (existingContentSet.has(contentKey)) continue;
-    existingContentSet.add(contentKey);
+    const nearbyTimestamps = existingByContentKey.get(contentKey);
+    const isSameEventSeenTwice = nearbyTimestamps?.some(
+      (t) => Math.abs(t - m.timestamp) < CONTENT_DEDUP_WINDOW_MS,
+    );
+    if (isSameEventSeenTwice) continue;
+
+    const list = existingByContentKey.get(contentKey);
+    if (list) list.push(m.timestamp);
+    else existingByContentKey.set(contentKey, [m.timestamp]);
 
     newMessages.push({
       id: m.id || uuid(),

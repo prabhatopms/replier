@@ -160,7 +160,7 @@ export function Guide({ onBack }: GuideProps) {
         <div>
           <Step n={1}>Open <strong>Settings</strong> (gear icon, top-right) and choose your AI provider — <strong>Claude</strong>, <strong>Gemini</strong>, or <strong>OpenAI</strong>.</Step>
           <Step n={2}>Paste your API key for that provider. Keys are stored locally on your device and never leave your browser.</Step>
-          <Step n={3}>Go to <strong>instagram.com/direct</strong> and open any conversation. Oxytocin detects the contact automatically and the floating popover appears.</Step>
+          <Step n={3}>Go to <strong>instagram.com/direct</strong> or <strong>web.whatsapp.com</strong> and open any conversation. Oxytocin detects which platform you're on and the contact automatically, and the floating popover appears.</Step>
           <Step n={4}>You're ready. When they message you, a reply is generated automatically.</Step>
         </div>
       ),
@@ -170,14 +170,14 @@ export function Guide({ onBack }: GuideProps) {
       content: (
         <div>
           <p style={{ fontSize: 12, color: T.bodyLight, lineHeight: 1.6, marginBottom: 10 }}>
-            A small floating panel appears over Instagram whenever a contact is active. You can drag it anywhere on screen.
+            A small floating panel appears over Instagram or WhatsApp whenever a contact is active. You can drag it anywhere on screen.
           </p>
           <FeatureList items={[
             ['Context tab', 'Shows memory — relationship, goal, AI summary, inside jokes, recent messages.'],
             ['Log icon', 'Activity log showing each step of what Oxytocin just did.'],
             ['Drag', 'Drag the header to reposition the popover anywhere on screen.'],
           ]} />
-          <Tip>The popover stays on top of Instagram's UI. Drag it out of the way if it covers content you need to read.</Tip>
+          <Tip>The popover stays on top of the chat UI. Drag it out of the way if it covers content you need to read.</Tip>
         </div>
       ),
     },
@@ -205,7 +205,7 @@ export function Guide({ onBack }: GuideProps) {
           <FeatureList items={[
             ['Edit inline', 'Click anywhere in the text box and type. The AI text is just a draft.'],
             ['⌘ ↵ / Ctrl ↵', 'Keyboard shortcut to send without touching the mouse.'],
-            ['Send button', "Inserts the reply into Instagram's input box and sends it."],
+            ['Send button', "Inserts the reply into the chat's input box and sends it."],
             ['↺ Regenerate', 'Discard and generate a fresh reply with the same tone.'],
             ['✏ Refine', 'Give the AI a text instruction — "make it shorter", "mention the cafe". It rewrites based on your note.'],
             ['✕ Dismiss', 'Close the reply without sending. Popover returns to idle.'],

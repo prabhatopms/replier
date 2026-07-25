@@ -1,7 +1,9 @@
 import type { Contact, ToneType, StructuredSummary, CustomTone } from '@/types/contact';
 import type { Message } from '@/types/message';
+import type { Platform } from '@/types/platform';
 import type { LLMMessage } from './types';
 import { getTonePrompt } from './tones';
+import { platformMeta } from '@/lib/platforms/meta';
 
 interface UserProfile {
   description: string;
@@ -29,11 +31,13 @@ export function buildSystemPrompt(
 ): string {
   const layers: string[] = [];
 
-  // Layer 1: You are texting on Instagram. SHORT.
-  layers.push(
-    `You text on Instagram DMs as this person. First person. Their style. Their words.
+  const platform = platformMeta(contact.platform);
 
-LENGTH: MAX 1-2 short sentences. This is a DM, not an email. Think phone keyboard.
+  // Layer 1: You are texting on <platform>. SHORT.
+  layers.push(
+    `You text on ${platform.label} ${platform.conversationNoun}s as this person. First person. Their style. Their words.
+
+LENGTH: MAX 1-2 short sentences. This is a ${platform.conversationNoun}, not an email. Think phone keyboard.
 
 Good examples:
 - "haha wait what 😂"
@@ -73,7 +77,9 @@ NO AI phrases: "absolutely", "I appreciate", "That sounds wonderful", "definitel
   layers.push(
     `CONVERSATION FORMAT: In the message history below, "[You]:" = your messages, "[${contact.displayName}]:" = their messages.
 If the last message in the history is "[You]:", generate a FOLLOW-UP to what you said — not a response. Do NOT repeat yourself; move the conversation forward naturally.
-If the last message is "[${contact.displayName}]:", generate a REPLY to what they said.`,
+If the last message is "[${contact.displayName}]:", generate a REPLY to what they said.
+
+TOPIC FATIGUE: Look at the recent history. If the current topic has already been asked about, joked about, or clearly wrapped up (short/flat replies, "yeah idk", topic trailing off, or it's just been going for several messages), do NOT keep digging into it or ask a rephrased version of the same question. Instead pivot — genuinely curious, exploratory energy, like a natural "so what else is going on with you" — toward something new about them: a different topic, something from their notes/interests you haven't touched yet, or a fresh question. Only stay on a topic if there's real unexplored thread left in it.`,
   );
 
   // Layer 7: Output format
@@ -216,7 +222,7 @@ export function buildMessageHistory(
     // Skip internal instruction messages
     if (msg.content.startsWith('[Replier instruction:')) continue;
 
-    const rawText = formatMessageContent(msg);
+    const rawText = formatMessageContent(msg, contact.platform);
     const senderLabel = msg.sender === 'user' ? '[You]' : `[${contact.displayName}]`;
     const text = `${senderLabel}: ${rawText}`;
     const chars = text.length + 20;
@@ -274,7 +280,7 @@ export function buildMessageHistory(
 /**
  * Format a message's content for the LLM, enriching non-text content.
  */
-function formatMessageContent(msg: Message): string {
+function formatMessageContent(msg: Message, platform?: Platform): string {
   if (msg.contentType === 'text') {
     // Check if it's a URL (reel, post, link)
     const content = msg.content.trim();
@@ -288,7 +294,8 @@ function formatMessageContent(msg: Message): string {
   }
 
   if (msg.contentType === 'story_reply') {
-    return `[Replied to their Instagram story: ${msg.content || 'reacted'}]`;
+    const meta = platformMeta(platform);
+    return `[Replied to their ${meta.label} ${meta.storyNoun}: ${msg.content || 'reacted'}]`;
   }
 
   if (msg.contentType === 'link') {

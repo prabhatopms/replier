@@ -5,27 +5,33 @@ import { resolveAdapter } from '@/lib/platforms/registry';
 import type { ExtractedMessage } from '@/types/platform';
 import type { ExtensionMessage } from '@/lib/messaging/types';
 import type { ToneType, CustomTone } from '@/types/contact';
+import { formatHandle } from '@/lib/platforms/meta';
 import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 
 export default defineContentScript({
-  // Matches all of instagram.com (not just /direct/*) because Chrome only
+  // Matches whole origins rather than the messaging paths, because Chrome only
   // evaluates content_scripts.matches at document-creation time — it does NOT
-  // re-inject when Instagram's SPA router navigates into /direct/* via
-  // history.pushState. Without this, a user who opens instagram.com on the
-  // feed and clicks into Messages never gets the content script until a hard
-  // refresh. Actual DM functionality still only activates once the URL
-  // matches /direct/*, via resolveAdapter() below.
+  // re-inject when an SPA router navigates into the inbox via history
+  // .pushState. Without this, a user who opens instagram.com on the feed and
+  // clicks into Messages never gets the content script until a hard refresh.
+  // Actual functionality still only activates once resolveAdapter() below
+  // matches the URL against a registered platform.
   matches: [
     'https://www.instagram.com/*',
+    'https://web.whatsapp.com/*',
   ],
   cssInjectionMode: 'ui',
 
   async main(ctx) {
     let adapter = resolveAdapter(window.location.href);
     let interceptorInjected = false;
+    let disposeConversationWatch: (() => void) | null = null;
 
     async function ensureInterceptorInjected(): Promise<void> {
       if (interceptorInjected || !adapter) return;
+      // WhatsApp encrypts its traffic end-to-end over WebSocket, so there is
+      // nothing readable to intercept — those adapters run DOM-only.
+      if (!adapter.hasInterceptor) return;
       interceptorInjected = true;
       try {
         await injectScript(`/${adapter.name}-interceptor.js` as ScriptPublicPath, {
@@ -44,6 +50,10 @@ export default defineContentScript({
     let currentContactId: string | null = null;
     let currentContactName: string = '';
     let currentContactUsername: string = '';
+    /** Bumped per detection run so late-finishing runs can detect they lost. */
+    let detectGeneration = 0;
+    /** Conversation key we last ran detection for, to avoid redundant reruns. */
+    let lastHandledKey: string | null = null;
     let messageObserver: MutationObserver | null = null;
     let scrapeAbortController: AbortController | null = null;
     let scrapedMessageCount = 0;
@@ -184,6 +194,7 @@ export default defineContentScript({
         popoverRoot.render(
           createElement(StatusPopover, {
             status: popoverStatus,
+            platform: adapter?.name,
             contactName: currentContactUsername || currentContactName || '',
             replyText,
             replyId,
@@ -243,27 +254,55 @@ export default defineContentScript({
     // =========================================================================
 
     async function detectAndSetContact(): Promise<void> {
+      if (!adapter) return;
+
+      // Detection spans several awaits, and the user can switch chats midway
+      // through — especially on WhatsApp, where clicking down the sidebar
+      // changes conversation with no page navigation to slow them down. Stamp
+      // each run so a newer one supersedes any still in flight; without this,
+      // a stale run finishing late would attach the previous contact's
+      // messages to the chat now on screen.
+      const gen = ++detectGeneration;
+      const isStale = () => gen !== detectGeneration;
+
+      const startKey = adapter.getConversationKey();
+      if (startKey) lastHandledKey = startKey;
+
       addLog('Detecting contact...', 'info');
       showPopover();
       setStatus('detecting');
 
-      // Retry polling: Instagram's SPA doesn't update the DOM instantly
-      let contactInfo = adapter!.getCurrentContactInfo();
+      // Retry polling: neither app updates the DOM instantly after a switch
+      let contactInfo = adapter.getCurrentContactInfo();
       if (!contactInfo) {
         addLog('DOM not ready, retrying...', 'warn');
         for (let attempt = 0; attempt < 10; attempt++) {
           await new Promise((r) => setTimeout(r, 300));
-          contactInfo = adapter!.getCurrentContactInfo();
+          if (isStale()) return;
+          contactInfo = adapter.getCurrentContactInfo();
           if (contactInfo) break;
         }
       }
       if (!contactInfo) {
+        // No conversation open at all is the normal resting state on WhatsApp,
+        // whose adapter matches the whole origin including the "no chat
+        // selected" screen. Sit quietly rather than leaving the popover
+        // spinning on 'detecting' until the user picks a chat.
+        if (!adapter.getConversationKey()) {
+          setStatus('idle');
+          hidePopover();
+          return;
+        }
         addLog('Could not detect contact after 10 retries', 'error');
         showPopover();
         return;
       }
 
-      const threadId = adapter!.getThreadId?.() || undefined;
+      // The conversation may have settled on a different chat than the one we
+      // started with; record what we actually resolved.
+      lastHandledKey = adapter.getConversationKey() ?? lastHandledKey;
+
+      const threadId = adapter.getThreadId?.() || undefined;
 
       const response = (await browser.runtime.sendMessage({
         type: 'DETECT_CONTACT',
@@ -277,12 +316,15 @@ export default defineContentScript({
         isNew?: boolean;
       };
 
+      if (isStale()) return;
+
       if (response?.ok && response.contact) {
         currentContactId = response.contact.id;
         currentContactName = contactInfo.name;
         currentContactUsername = contactInfo.platformUserId;
         isNewConversation = false;
-        addLog(`Contact detected: @${contactInfo.platformUserId}${response.isNew ? ' (new)' : ''}`, 'success');
+        const handle = formatHandle(adapter.name, contactInfo.platformUserId);
+        addLog(`Contact detected: ${handle}${response.isNew ? ' (new)' : ''}`, 'success');
 
         // Show inline new contact banner
         if (response.isNew) {
@@ -294,6 +336,7 @@ export default defineContentScript({
 
         // Scrape visible DOM messages immediately — no scrolling required
         await scrapeVisibleMessages();
+        if (isStale()) return;
 
         // Fetch context for the memory panel
         fetchContactContext();
@@ -301,6 +344,7 @@ export default defineContentScript({
         // Show the popover and resolve the current status
         showPopover();
         await resolveContactStatus();
+        if (isStale()) return;
 
         // Auto-scrub if needed
         if (!response.contact.historyScrubbed) {
@@ -868,107 +912,109 @@ export default defineContentScript({
     // SPA NAVIGATION
     // =========================================================================
 
+    /**
+     * Clear all per-conversation state so the next contact starts clean.
+     * Anything scoped to a single chat must be reset here — leaking a reply or
+     * a contact ID across a switch would attribute one person's message to
+     * another.
+     */
+    function resetConversationState(): void {
+      currentContactId = null;
+      currentContactName = '';
+      currentContactUsername = '';
+      contactContext = null;
+      isNewContact = false;
+      isNewConversation = false;
+      lastHandledKey = null;
+      isScraping = false;
+      scrapeComplete = false;
+      scrapeDisplayCount = 0;
+      lsMessageBuffer.length = 0;
+      replyText = '';
+      replyId = '';
+      errorMessage = '';
+      popoverStatus = 'idle';
+      messageObserver?.disconnect();
+      messageObserver = null;
+      scrapeAbortController?.abort();
+      hidePopover();
+    }
+
+    /**
+     * Watch for the user switching to a different conversation.
+     *
+     * The adapter owns this because the signal differs per platform:
+     * Instagram usually changes the URL, WhatsApp Web never does. Re-attached
+     * on every activation so the watcher always closes over the live adapter.
+     */
+    function attachConversationWatch(): void {
+      disposeConversationWatch?.();
+      disposeConversationWatch = adapter?.observeConversationChange(() => {
+        // The watcher fires on any key change, including the DOM settling
+        // into the chat we are already showing. Only act on a genuinely
+        // different conversation.
+        const key = adapter?.getConversationKey() ?? null;
+        if (key !== null && key === lastHandledKey) return;
+        resetConversationState();
+        detectAndSetContact();
+      }) ?? null;
+    }
+
+    function activate(): void {
+      console.log(`[Replier] Loaded ${adapter!.name} adapter`);
+      attachConversationWatch();
+      // Short initial delay — detectAndSetContact has its own retry loop
+      ensureInterceptorInjected().then(() => {
+        ctx.setTimeout(detectAndSetContact, 200);
+      });
+    }
+
     ctx.addEventListener(
       window,
       'wxt:locationchange' as keyof WindowEventMap,
       (() => {
-        // Re-resolve on every navigation — the page may be entering or
-        // leaving /direct/* for the first time in this document's lifetime
-        // (matches is now the whole origin; see comment on `matches` above).
+        // Re-resolve on every navigation — the page may be entering or leaving
+        // a messaging route for the first time in this document's lifetime
+        // (matches is the whole origin; see comment on `matches` above).
         const newAdapter = resolveAdapter(window.location.href);
         if (!newAdapter) {
           if (adapter) {
             adapter = null;
-            hidePopover();
+            disposeConversationWatch?.();
+            disposeConversationWatch = null;
+            lastHandledKey = null;
+            resetConversationState();
           }
           return;
         }
-        const firstActivation = !adapter;
+
+        // Already running: this is a move between conversations, which the
+        // conversation watcher owns. Handling it here too would run detection
+        // twice for one switch — and on Instagram, where the URL does change,
+        // that means two DETECT_CONTACT round-trips and two generations.
+        if (adapter) return;
+
         adapter = newAdapter;
-
-        // Reset all state for the new conversation
-        currentContactId = null;
-        currentContactName = '';
-        currentContactUsername = '';
-        contactContext = null;
-        isNewContact = false;
-        isScraping = false;
-        scrapeComplete = false;
-        scrapeDisplayCount = 0;
-        hidePopover();
-        lsMessageBuffer.length = 0;
-        replyText = '';
-        replyId = '';
-        errorMessage = '';
-        popoverStatus = 'idle';
-
-        if (firstActivation) {
-          console.log(`[Replier] Loaded ${adapter.name} adapter`);
-          ctx.setTimeout(setupThreadClickListener, 2000);
-        }
-        // Short initial delay — detectAndSetContact has its own retry loop
-        ensureInterceptorInjected().then(() => {
-          ctx.setTimeout(detectAndSetContact, 200);
-        });
+        resetConversationState();
+        activate();
       }) as EventListener,
     );
 
-    // Also detect thread clicks on the left panel.
-    // Instagram doesn't always change the URL when switching threads,
-    // so wxt:locationchange alone is unreliable. We listen for clicks
-    // on the thread list and re-detect after a short delay.
-    let lastDetectedUrl = '';
-    let threadClickListenerAttached = false;
-    function setupThreadClickListener(): void {
-      if (threadClickListenerAttached) return;
-      const threadList = document.querySelector(
-        'div[aria-label="Thread list"][role="navigation"], [data-pagelet="IGDInboxThreadListScrollableAreaPagelet"]',
-      );
-      if (threadList) {
-        threadClickListenerAttached = true;
-        threadList.addEventListener('click', () => {
-          // Debounce: only trigger if URL changed or enough time passed
-          setTimeout(() => {
-            const currentUrl = window.location.href;
-            if (currentUrl !== lastDetectedUrl) {
-              lastDetectedUrl = currentUrl;
-              // Reset state for new conversation
-              currentContactId = null;
-              currentContactName = '';
-              currentContactUsername = '';
-              contactContext = null;
-              isNewContact = false;
-              isScraping = false;
-              scrapeComplete = false;
-              scrapeDisplayCount = 0;
-              hidePopover();
-              lsMessageBuffer.length = 0;
-              replyText = '';
-              replyId = '';
-              errorMessage = '';
-              popoverStatus = 'idle';
-              detectAndSetContact();
-            }
-          }, 600);
-        });
-        console.log('[Replier] Thread list click listener attached');
-      }
-    }
-
-    // If the document was already on a matching /direct/* URL at load time,
-    // activate immediately. Otherwise wait for the wxt:locationchange handler
-    // above to activate once the user SPA-navigates into Direct.
+    // If the document already loaded on a messaging route, activate
+    // immediately. Otherwise wait for the wxt:locationchange handler above,
+    // which fires once the user SPA-navigates into the inbox.
     if (adapter) {
-      console.log(`[Replier] Loaded ${adapter.name} adapter`);
       await ensureInterceptorInjected();
+      console.log(`[Replier] Loaded ${adapter.name} adapter`);
+      attachConversationWatch();
       ctx.setTimeout(detectAndSetContact, 1000);
-      ctx.setTimeout(setupThreadClickListener, 2000);
     } else {
-      console.log('[Replier] Instagram loaded — waiting for Direct navigation');
+      console.log('[Replier] Waiting for navigation into a supported inbox');
     }
 
     // Clean up
     ctx.onInvalidated(() => {
+      disposeConversationWatch?.();
       messageObserver?.disconnect();
       scrapeAbortController?.abort();
       hidePopover();

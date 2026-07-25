@@ -15,6 +15,12 @@ stats-*.json
 web-ext.config.ts
 .instaDOM
 
+# Captured DOM dumps used for selector work — these contain real conversation
+# content and must never be committed.
+whatsapp-main.html
+whatsapp-pane.html
+*-dom.html
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,10 +1,11 @@
 import type { PlatformAdapter, Platform } from '@/types/platform';
 import { instagramAdapter } from './instagram/adapter';
+import { whatsappAdapter } from './whatsapp/adapter';
 
 const adapters: PlatformAdapter[] = [
   instagramAdapter,
+  whatsappAdapter,
   // Future adapters:
-  // whatsappAdapter,
   // messengerAdapter,
   // twitterAdapter,
   // linkedinAdapter,
