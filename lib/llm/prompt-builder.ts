@@ -83,8 +83,16 @@ ${voiceProfile.samples.map((s) => `- "${s}"`).join('\n')}`,
   layers.push(buildPersonaLayer(contact, freshStart, !!voiceProfile));
 
   // Layer 5: Tone — a deliberate creative direction layered on top of the
-  // real voice above, not a replacement for it.
-  layers.push(`Tone: ${getTonePrompt(tone, customTones)}`);
+  // real voice above, not a replacement for it. State that explicitly, since
+  // otherwise the tone description reads as a standalone persona and quietly
+  // overrides Layer 2's actual fingerprint (length, punctuation, energy) —
+  // most noticeable switching off "default", whose tone text is the only one
+  // that happens to restate the voice-matching instruction itself.
+  layers.push(
+    `Tone: ${getTonePrompt(tone, customTones)}
+
+This tone is a flavor on top of YOUR ACTUAL VOICE above, not a replacement for it. Keep the same real fingerprint — message length, punctuation, energy — that voice profile established. Don't drift into a generic "confident guy" / "flirty texter" / etc. voice that could belong to anyone.`,
+  );
 
   // Layer 6: Conversation direction. Reply-vs-follow-up is already handled
   // structurally (buildMessageHistory appends a synthetic prompt turn when
