@@ -272,16 +272,33 @@ export default defineContentScript({
       showPopover();
       setStatus('detecting');
 
-      // Retry polling: neither app updates the DOM instantly after a switch
+      // Poll until identity settles on the SAME value twice in a row, not just
+      // until it's non-null. WhatsApp resolves a saved contact's name
+      // asynchronously — the header can briefly show the raw phone number
+      // first — and the header title IS our identity key (getCurrentContactInfo
+      // and getConversationKey both read it, and background.ts looks up the
+      // contact by it). Accepting the first non-null read risks catching that
+      // placeholder, which creates a SECOND contact record for the same
+      // person the moment the real name loads. That record starts with
+      // historyScrubbed=false, so every future visit that also catches the
+      // placeholder re-triggers a full history scrape from scratch — this is
+      // the likely cause of "it rescrapes the whole chat every time I open it."
       let contactInfo = adapter.getCurrentContactInfo();
-      if (!contactInfo) {
-        addLog('DOM not ready, retrying...', 'warn');
-        for (let attempt = 0; attempt < 10; attempt++) {
-          await new Promise((r) => setTimeout(r, 300));
-          if (isStale()) return;
-          contactInfo = adapter.getCurrentContactInfo();
-          if (contactInfo) break;
-        }
+      let stableReads = contactInfo ? 1 : 0;
+      for (let attempt = 0; attempt < 12 && stableReads < 2; attempt++) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (isStale()) return;
+        const next = adapter.getCurrentContactInfo();
+        stableReads =
+          next && contactInfo && next.platformUserId === contactInfo.platformUserId
+            ? stableReads + 1
+            : next
+              ? 1
+              : 0;
+        contactInfo = next;
+      }
+      if (!contactInfo || stableReads < 2) {
+        contactInfo = null;
       }
       if (!contactInfo) {
         // No conversation open at all is the normal resting state on WhatsApp,
@@ -331,10 +348,20 @@ export default defineContentScript({
           isNewContact = true;
         }
 
-        // Re-attach message observer
+        // Ensure we're actually at the bottom before scraping. This is a
+        // no-op almost every time (WhatsApp/Instagram already open a chat
+        // scrolled to the bottom) — it only does real work on the rare
+        // occasion our own fast detection retry caught the DOM before the
+        // app's own scroll had settled, which is exactly when the latest
+        // message would otherwise be missed.
+        await adapter.scrollToBottom();
+        if (isStale()) return;
+
+        // Re-attach message observer AFTER settling on the bottom, so its
+        // baseline reflects what's actually on screen now.
         attachMessageObserver();
 
-        // Scrape visible DOM messages immediately — no scrolling required
+        // Scrape visible DOM messages
         await scrapeVisibleMessages();
         if (isStale()) return;
 
@@ -779,6 +806,19 @@ export default defineContentScript({
       scrapeComplete = false;
       renderPopover();
 
+      // The live observer and this function both react to DOM mutations, and
+      // scrolling up through history is itself a wall of mutations — older
+      // messages appearing in the DOM for the first time look identical to a
+      // genuinely new incoming message to the observer's identity-diffing.
+      // Left running, it fires NEW_MESSAGE for a screen's worth of history on
+      // every scroll step (wasted, duplicate work), and — because NEW_MESSAGE
+      // can trigger auto-generation for active contacts — risks generating a
+      // reply to something the contact said days ago. Disconnect for the
+      // duration and reattach once we're back at the bottom with a baseline
+      // that reflects the settled DOM, not the mid-scroll one.
+      messageObserver?.disconnect();
+      messageObserver = null;
+
       try {
         if (lsMessageBuffer.length > 0) {
           await sendScrapeBatch(lsMessageBuffer.splice(0));
@@ -830,6 +870,9 @@ export default defineContentScript({
         renderPopover();
       } finally {
         scrapeAbortController = null;
+        // Reattach with a fresh baseline now that we've settled back at the
+        // bottom — whether the scrape succeeded, failed, or was cancelled.
+        if (currentContactId) attachMessageObserver();
       }
     }
 

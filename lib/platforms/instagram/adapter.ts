@@ -212,6 +212,11 @@ export const instagramAdapter: PlatformAdapter = {
     if (!container) return;
     const scrollable = findScrollableChild(container) || container;
 
+    // Skip the wait entirely when we're already at the bottom — the common
+    // case on a fresh chat open, where Instagram has already rendered the
+    // latest messages and there's nothing to catch up on.
+    if (isNearBottom(scrollable)) return;
+
     // Instagram virtualizes the message list — after scrolling up through history,
     // the latest messages are unloaded and need an API round-trip to re-render.
     // Poll until the bubble count stabilizes rather than using a fixed wait.
@@ -554,6 +559,13 @@ function findScrollableChild(container: HTMLElement): HTMLElement | null {
     }
   }
   return null;
+}
+
+/** Within this many px of the true bottom counts as "already there." */
+const BOTTOM_THRESHOLD_PX = 40;
+
+function isNearBottom(scrollable: HTMLElement): boolean {
+  return scrollable.scrollHeight - scrollable.scrollTop - scrollable.clientHeight < BOTTOM_THRESHOLD_PX;
 }
 
 /**

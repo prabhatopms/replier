@@ -82,6 +82,23 @@ export async function getContactMessageCount(contactId: string): Promise<number>
     .count();
 }
 
+/**
+ * Recent messages the user has sent to ANYONE, most recent first.
+ *
+ * Used as a texting-voice fallback for a brand-new contact with zero shared
+ * history — without it, the very first message to someone new has no real
+ * signal to sound like this specific person at all, only generic prompt
+ * instructions.
+ */
+export async function getRecentUserMessages(limit = 40): Promise<Message[]> {
+  return db.messages
+    .orderBy('timestamp')
+    .reverse()
+    .filter((m) => m.sender === 'user' && m.contentType === 'text')
+    .limit(limit)
+    .toArray();
+}
+
 export async function getLastMessage(
   contactId: string,
 ): Promise<Message | undefined> {

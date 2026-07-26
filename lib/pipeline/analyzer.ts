@@ -174,3 +174,129 @@ export function classifyEmojiUsage(rate: number): 'none' | 'light' | 'heavy' {
   if (rate < 0.5) return 'light';
   return 'heavy';
 }
+
+export interface VoiceProfile {
+  /** Bullet-point description of measured texting habits, ready to drop into a prompt. */
+  description: string;
+  /** Real, verbatim messages — the strongest possible signal for "sound like this person." */
+  samples: string[];
+}
+
+const FILLER_WORDS = [
+  'lol', 'lmao', 'lmaoo', 'haha', 'hahaha', 'omg', 'ngl', 'tbh', 'fr',
+  'literally', 'bro', 'bruh', 'ikr', 'nah', 'yeah', 'yea', 'ya', 'ofc',
+  'idk', 'ig', 'tho', 'ah', 'ehh', 'hmm',
+];
+
+/**
+ * Build a texting-voice profile from a person's own real messages —
+ * measured directly from their text, not inferred by an LLM.
+ *
+ * This exists because generic "sound natural" instructions and hardcoded
+ * example phrases in a prompt tend to leak into every reply regardless of
+ * who's being imitated, producing a recognizable, repeated "voice" that
+ * belongs to the prompt rather than the actual person. Concrete, measured
+ * habits (capitalization, punctuation, real sample messages) anchor the
+ * model to this specific person's texting fingerprint instead.
+ *
+ * Returns null when there isn't enough signal (fewer than 3 real texts) to
+ * say anything meaningful — callers should fall back to a lighter default
+ * rather than presenting a profile built from near-nothing as fact.
+ */
+export function buildVoiceProfile(rawTexts: string[]): VoiceProfile | null {
+  // Bracket-wrapped entries are our own enrichment (e.g. "[Sent an image]",
+  // "[Replying to: ...]"), not the person's actual words — exclude them.
+  const texts = rawTexts.map((t) => t.trim()).filter((t) => t.length > 0 && !t.startsWith('['));
+  if (texts.length < 3) return null;
+
+  const sample = texts.slice(-60);
+
+  let lower = 0;
+  let upper = 0;
+  for (const t of sample) {
+    const c = t[0];
+    if (c && /[a-z]/.test(c)) lower++;
+    else if (c && /[A-Z]/.test(c)) upper++;
+  }
+  const capTotal = lower + upper;
+
+  let noPunct = 0, ellipsis = 0, question = 0, exclaim = 0, period = 0;
+  for (const t of sample) {
+    if (/\.\.\.$/.test(t)) ellipsis++;
+    else if (/\?$/.test(t)) question++;
+    else if (/!+$/.test(t)) exclaim++;
+    else if (/\.$/.test(t)) period++;
+    else noPunct++;
+  }
+  const puncTotal = noPunct + ellipsis + question + exclaim + period;
+
+  const avgChars = sample.reduce((s, t) => s + t.length, 0) / sample.length;
+
+  const emojiCounts = new Map<string, number>();
+  let withEmoji = 0;
+  for (const t of sample) {
+    const found = t.match(EMOJI_REGEX);
+    if (found?.length) {
+      withEmoji++;
+      for (const e of found) emojiCounts.set(e, (emojiCounts.get(e) || 0) + 1);
+    }
+  }
+  const topEmojis = [...emojiCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([e]) => e);
+
+  const joined = ` ${sample.join(' ').toLowerCase()} `;
+  const usedFillers = FILLER_WORDS.filter((f) => joined.includes(` ${f} `) || joined.includes(` ${f}.`) || joined.includes(` ${f}!`));
+
+  const lines: string[] = [
+    avgChars < 20
+      ? 'Very short — often just a few words'
+      : avgChars < 50
+        ? 'Short and punchy'
+        : avgChars < 110
+          ? 'Medium-length, a full thought per message'
+          : 'Comfortable writing longer, detailed messages',
+  ];
+
+  if (capTotal >= 4) {
+    if (lower / capTotal > 0.75) lines.push('Rarely capitalizes the first letter — all-lowercase texting');
+    else if (upper / capTotal > 0.85) lines.push('Capitalizes normally, like standard writing');
+  }
+
+  if (puncTotal >= 4) {
+    if (noPunct / puncTotal > 0.55) lines.push('Usually skips ending punctuation entirely');
+    if (ellipsis / puncTotal > 0.15) lines.push('Uses "..." to trail off sometimes');
+    if (exclaim / puncTotal > 0.25) lines.push('Punctuates with "!" often — reads as high energy');
+  }
+
+  if (sample.length >= 5) {
+    if (withEmoji / sample.length > 0.4) {
+      lines.push(`Uses emoji often${topEmojis.length ? `, especially ${topEmojis.join(' ')}` : ''}`);
+    } else if (withEmoji / sample.length < 0.05) {
+      lines.push('Almost never uses emoji');
+    }
+  }
+
+  if (usedFillers.length > 0) {
+    lines.push(`Natural filler words in their vocabulary: ${usedFillers.slice(0, 6).join(', ')}`);
+  }
+
+  return {
+    description: lines.map((l) => `- ${l}`).join('\n'),
+    samples: pickDiverseSamples(texts, 5),
+  };
+}
+
+/**
+ * Pick recency-weighted, deduplicated real messages to use as verbatim
+ * few-shot examples — the strongest possible "sound like this" signal.
+ */
+function pickDiverseSamples(texts: string[], n: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = texts.length - 1; i >= 0 && out.length < n; i--) {
+    const key = texts[i].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(texts[i]);
+  }
+  return out.reverse();
+}

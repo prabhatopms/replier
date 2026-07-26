@@ -203,13 +203,21 @@ export const whatsappAdapter: PlatformAdapter = {
     const scrollable = this.getMessageContainer();
     if (!scrollable) return;
 
+    // WhatsApp already scrolls to the bottom itself when a chat opens, so
+    // this is a no-op almost every time it's called on chat detection — only
+    // poll-and-wait when we're actually not there (e.g. after the history
+    // scrape deliberately scrolled up, or the DOM hadn't settled yet).
+    if (isNearBottom(scrollable)) return;
+
     let prevCount = 0;
     for (let attempt = 0; attempt < 6; attempt++) {
       scrollable.scrollTop = scrollable.scrollHeight;
       await new Promise((r) => setTimeout(r, 700));
-      const count = querySelectorAll(SELECTORS.messageBubble, scrollable).length;
-      if (count > 0 && count === prevCount) break;
-      prevCount = count;
+      if (isNearBottom(scrollable)) {
+        const count = querySelectorAll(SELECTORS.messageBubble, scrollable).length;
+        if (count > 0 && count === prevCount) break;
+        prevCount = count;
+      }
     }
   },
 
@@ -647,6 +655,13 @@ function normalizeName(raw: string): string {
 /**
  * Deterministic hash for stable IDs when WhatsApp's own message key is absent.
  */
+/** Within this many px of the true bottom counts as "already there." */
+const BOTTOM_THRESHOLD_PX = 40;
+
+function isNearBottom(scrollable: HTMLElement): boolean {
+  return scrollable.scrollHeight - scrollable.scrollTop - scrollable.clientHeight < BOTTOM_THRESHOLD_PX;
+}
+
 function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
