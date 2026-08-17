@@ -17,8 +17,10 @@ import {
   getRecentMessages,
   getLastMessage,
   getContactMessageCount,
+  getMessageCount,
   storeMessagesDeduped,
   reconcileMessages,
+  deleteMessages,
 } from '@/lib/db/messages';
 import {
   getPendingReplyForContact,
@@ -295,6 +297,19 @@ async function handleMessage(
       await saveContact(contact);
 
       return { ok: true };
+    }
+
+    case 'DELETE_MESSAGES': {
+      const contact = await getContact(message.contactId);
+      if (!contact) return { ok: false, error: 'Contact not found' };
+
+      const deletedCount = await deleteMessages(message.contactId, message.messageIds);
+
+      contact.messageCount = await getMessageCount(message.contactId);
+      contact.updatedAt = Date.now();
+      await saveContact(contact);
+
+      return { ok: true, deletedCount };
     }
 
     case 'TRIGGER_SUMMARIZE': {

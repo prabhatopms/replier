@@ -33,6 +33,9 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { loadData(); }, [contactId]);
 
@@ -56,6 +59,31 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
     await browser.runtime.sendMessage({ type: 'CLEAR_HISTORY', contactId } satisfies ExtensionMessage);
     setMessages([]);
     setClearing(false);
+  }
+
+  function toggleSelectMode() {
+    setSelectMode((v) => !v);
+    setSelected(new Set());
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleDeleteSelected() {
+    if (selected.size === 0) return;
+    setDeleting(true);
+    const messageIds = Array.from(selected);
+    await browser.runtime.sendMessage({ type: 'DELETE_MESSAGES', contactId, messageIds } satisfies ExtensionMessage);
+    setMessages((prev) => prev.filter((m) => !selected.has(m.id)));
+    setSelected(new Set());
+    setSelectMode(false);
+    setDeleting(false);
   }
 
   if (loading) {
@@ -88,6 +116,34 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
           {contact?.displayName || 'Conversation'}
         </span>
         <span style={{ fontSize: 10.5, color: T.muted, flexShrink: 0 }}>{messages.length} msgs</span>
+        {selectMode ? (
+          <button
+            onClick={toggleSelectMode}
+            style={{
+              padding: '4px 9px', borderRadius: 7, flexShrink: 0,
+              border: `1px solid ${T.border}`, background: T.white,
+              color: T.bodyLight, fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', fontFamily: F,
+            }}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            onClick={toggleSelectMode}
+            disabled={messages.length === 0}
+            style={{
+              padding: '4px 9px', borderRadius: 7, flexShrink: 0,
+              border: `1px solid ${T.border}`, background: T.white,
+              color: T.bodyLight, fontSize: 11, fontWeight: 600,
+              cursor: messages.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: messages.length === 0 ? 0.5 : 1,
+              fontFamily: F,
+            }}
+          >
+            Select
+          </button>
+        )}
         <button
           onClick={handleClear}
           disabled={clearing}
@@ -105,6 +161,34 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
           🗑 {clearing ? 'Clearing…' : 'Clear'}
         </button>
       </div>
+
+      {/* Selection action bar */}
+      {selectMode && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 9,
+          padding: '7px 11px', marginBottom: 12,
+        }}>
+          <span style={{ fontSize: 11, color: T.bodyLight }}>
+            {selected.size === 0 ? 'Tap messages to select' : `${selected.size} selected`}
+          </span>
+          <button
+            onClick={handleDeleteSelected}
+            disabled={selected.size === 0 || deleting}
+            style={{
+              padding: '4px 10px', borderRadius: 7,
+              border: '1px solid #fecdd3',
+              background: selected.size === 0 ? '#fff5f5' : '#ef4444',
+              color: selected.size === 0 ? '#ef4444' : T.white,
+              fontSize: 11, fontWeight: 600, fontFamily: F,
+              cursor: selected.size === 0 || deleting ? 'not-allowed' : 'pointer',
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : `Delete${selected.size > 0 ? ` (${selected.size})` : ''}`}
+          </button>
+        </div>
+      )}
 
       {/* Context summary */}
       {contact?.conversationSummary && contact.conversationSummary !== 'No summary yet' && (
@@ -147,11 +231,32 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
             const time = new Date(msg.timestamp).toLocaleString(undefined, {
               month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
             });
+            const isSelected = selected.has(msg.id);
             return (
               <div
                 key={msg.id}
-                style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                onClick={selectMode ? () => toggleSelected(msg.id) : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  justifyContent: isUser ? 'flex-end' : 'flex-start',
+                  cursor: selectMode ? 'pointer' : 'default',
+                  flexDirection: isUser ? 'row-reverse' : 'row',
+                }}
               >
+                {selectMode && (
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 5, flexShrink: 0,
+                    border: `1.5px solid ${isSelected ? '#ef4444' : T.border}`,
+                    background: isSelected ? '#ef4444' : T.white,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isSelected && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={T.white} strokeWidth="3">
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    )}
+                  </div>
+                )}
                 <div style={{
                   maxWidth: '80%',
                   background: isUser ? T.indigo : T.incomingBg,
@@ -163,6 +268,8 @@ export function ConversationView({ contactId, onBack }: ConversationViewProps) {
                   fontSize: 12.5,
                   lineHeight: 1.45,
                   boxShadow: isUser ? '0 2px 8px rgba(79,70,229,.2)' : 'none',
+                  outline: isSelected ? '2px solid #ef4444' : 'none',
+                  outlineOffset: 1,
                 }}>
                   <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {msg.contentType === 'text' ? msg.content : `[${msg.contentType}]`}

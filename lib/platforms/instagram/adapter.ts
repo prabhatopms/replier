@@ -318,36 +318,47 @@ export const instagramAdapter: PlatformAdapter = {
 };
 
 /**
+ * How many ancestors up from a bubble the alignment check is allowed to
+ * walk. A live capture showed the real flex-end/row-reverse signal for the
+ * user's own bubbles sitting at depth 3-4, but walking further eventually
+ * reaches a shared layout wrapper — unrelated to any individual message —
+ * that happens to compute `justifyContent: flex-end` for EVERY bubble,
+ * sent or received alike, at depth 6 or beyond depending on message type.
+ * An unbounded walk hits that wrapper on the contact's messages too and
+ * misreports everyone as 'user'. Capping it here keeps the real signal
+ * while staying short of the false one.
+ */
+const ALIGNMENT_WALK_MAX_DEPTH = 5;
+
+/**
  * Detect whether a message bubble was sent by the user or the contact.
- * Uses a fast class-check path with computed-style fallback.
+ * Uses a bounded computed-style check with a class-check fallback.
  */
 function detectSender(bubble: HTMLElement): 'user' | 'contact' {
-  // Primary signal: computed alignment. A reply-to-message capture showed
-  // SENT_BUBBLE_CLASS (x12lizq0) present on a "quoted message" card wrapper —
-  // an element that has nothing to do with who sent the actual bubble. Meta's
-  // atomic CSS classes are shared across components for incidental properties
-  // (cursor, border-radius, etc.), so a bare class match is not trustworthy
-  // as a sent/received signal; computed flex alignment reflects the real
-  // layout decision Instagram made and doesn't share that ambiguity.
+  // Primary signal: computed alignment, checked only a few levels up (see
+  // ALIGNMENT_WALK_MAX_DEPTH). `row-reverse` and `flex-end` mark the user's
+  // own TEXT bubbles reliably at that depth; media bubbles don't carry this
+  // wrapper at all and fall through to the class check below instead.
   let el: HTMLElement | null = bubble.parentElement;
-  while (el) {
+  for (let depth = 0; depth < ALIGNMENT_WALK_MAX_DEPTH && el && el !== document.body; depth++) {
     const style = window.getComputedStyle(el);
     if (
       style.justifyContent === 'flex-end' ||
       style.alignSelf === 'flex-end' ||
-      style.marginLeft === 'auto'
+      style.marginLeft === 'auto' ||
+      style.flexDirection === 'row-reverse'
     ) {
       return 'user';
     }
-    if (style.justifyContent === 'flex-start') {
-      return 'contact';
-    }
     el = el.parentElement;
-    if (el === document.body) break;
   }
 
-  // Fallback: minified class check, only reached if computed style was
-  // inconclusive (no flex-end/flex-start found walking up to <body>).
+  // Fallback: minified class check. A reply-to-message capture once showed
+  // SENT_BUBBLE_CLASS (x12lizq0) present on a "quoted message" card wrapper
+  // unrelated to the actual bubble's sender, which is why this stays
+  // secondary to the alignment check rather than primary — but across every
+  // live sample captured so far (including media bubbles, which the
+  // alignment check above can't resolve at all) it has been reliable.
   if (bubble.classList.contains(SENT_BUBBLE_CLASS)) {
     return 'user';
   }
@@ -569,6 +580,27 @@ function isNearBottom(scrollable: HTMLElement): boolean {
 }
 
 /**
+ * The logged-in user's numeric Instagram ID, read from the `ds_user_id`
+ * cookie Instagram sets client-side for its own JS to use. Memoized because
+ * it never changes within a session and every intercepted response otherwise
+ * has to re-derive it.
+ *
+ * This exists because Lightspeed messages (see parseLightspeedResponse)
+ * carry a senderId but no reliable per-response viewer_id the way the older
+ * direct_v2 thread payloads do — and Lightspeed echoes back the user's own
+ * sent messages for multi-device sync, so without resolving senderId against
+ * *something*, every message you send gets misfiled as the contact's.
+ */
+let cachedViewerId: string | null = null;
+
+export function getViewerId(): string | null {
+  if (cachedViewerId) return cachedViewerId;
+  const match = document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/);
+  if (match) cachedViewerId = match[1];
+  return cachedViewerId;
+}
+
+/**
  * Parse Instagram's direct thread API response into ExtractedMessages.
  */
 function parseDirectThreadResponse(body: unknown): ExtractedMessage[] | null {
@@ -582,7 +614,7 @@ function parseDirectThreadResponse(body: unknown): ExtractedMessage[] | null {
 
   if (!Array.isArray(items)) return null;
 
-  const viewerId = (thread?.viewer_id || data.viewer_id) as string | undefined;
+  const viewerId = ((thread?.viewer_id || data.viewer_id) as string | undefined) ?? getViewerId() ?? undefined;
 
   for (const item of items) {
     const text = (item.text as string) || '';
@@ -653,16 +685,20 @@ function parseLightspeedResponse(body: unknown): ExtractedMessage[] | null {
       const senderMatch = afterMatch.match(
         /mid\.[^"]*["'][^"]*["']\d+["'][^[]*?\[19,\s*["'](\d+)["']\]/,
       );
+      const senderId = senderMatch?.[1];
+      const viewerId = getViewerId();
+      const sender: 'user' | 'contact' =
+        viewerId && senderId && senderId === viewerId ? 'user' : 'contact';
 
       messages.push({
         id: uuid(),
-        sender: 'contact', // Will be resolved later when viewerId is known
+        sender,
         content: decodeUnicodeEscapes(text || '[media]'),
         contentType: text ? 'text' : 'image',
         timestamp: timestamp || Date.now(),
         rawData: {
           threadId,
-          senderId: senderMatch?.[1],
+          senderId,
           source: 'lightspeed',
         },
       });

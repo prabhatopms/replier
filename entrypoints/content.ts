@@ -6,7 +6,20 @@ import type { ExtractedMessage } from '@/types/platform';
 import type { ExtensionMessage } from '@/lib/messaging/types';
 import type { ToneType, CustomTone } from '@/types/contact';
 import { formatHandle } from '@/lib/platforms/meta';
+import { getViewerId } from '@/lib/platforms/instagram/adapter';
 import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
+import type { StoryReplyStatus } from '@/components/StoriesPanel';
+import {
+  getStoryTrayEntries,
+  openStoryEntry,
+  closeActiveStory,
+  isStoryViewerOpen,
+  isReplyAvailableOnOpenStory,
+  getOpenStoryUsername,
+  getReactedUsernames,
+  markStoryReacted,
+  type StoryTrayEntry,
+} from '@/lib/platforms/instagram/stories';
 
 export default defineContentScript({
   // Matches whole origins rather than the messaging paths, because Chrome only
@@ -139,10 +152,11 @@ export default defineContentScript({
           senderId: string; messageId: string;
         }>;
       };
+      const viewerId = getViewerId();
       for (const msg of messages) {
         lsMessageBuffer.push({
           id: msg.messageId || `ls-${msg.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-          sender: 'contact',
+          sender: viewerId && msg.senderId && msg.senderId === viewerId ? 'user' : 'contact',
           content: msg.text,
           contentType: msg.text && msg.text !== '[media]' ? 'text' : 'image',
           timestamp: msg.timestamp,
@@ -248,6 +262,144 @@ export default defineContentScript({
       popoverVisible = false;
       renderPopover();
     }
+
+    // =========================================================================
+    // STORIES QUICK-NAV PANEL
+    //
+    // Surfaces unseen stories from the feed tray so the user can jump between
+    // them quickly. It never reacts or replies on the user's behalf — opening
+    // a story just dispatches the same click a real click would produce, and
+    // the user reacts through Instagram's own UI. "Next unseen" is likewise
+    // just navigation, not automated engagement.
+    // =========================================================================
+
+    const isInstagram = window.location.hostname.includes('instagram.com');
+
+    let storyEntries: StoryTrayEntry[] = [];
+    let activeStoryUsername: string | null = null;
+    let storyReplyStatus: StoryReplyStatus = 'unknown';
+    let storiesPanelDismissed = false;
+    let storiesObserver: MutationObserver | null = null;
+    let storiesScanDebounce: ReturnType<typeof setTimeout> | null = null;
+
+    let storiesPanelRoot: ReturnType<typeof createRoot> | null = null;
+
+    if (isInstagram) {
+      const storiesPanelUi = await createShadowRootUi(ctx, {
+        name: 'replier-stories',
+        position: 'overlay',
+        anchor: 'body',
+        onMount: (container) => {
+          container.style.fontSize = '16px';
+          container.style.fontFamily =
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+          container.style.lineHeight = '1.5';
+          container.style.color = '#111827';
+          if (!storiesPanelRoot) {
+            storiesPanelRoot = createRoot(container);
+          }
+          renderStoriesPanel();
+          return () => {};
+        },
+      });
+      storiesPanelUi.mount();
+    }
+
+    function renderStoriesPanel(): void {
+      if (!storiesPanelRoot) return;
+      if (storiesPanelDismissed) {
+        storiesPanelRoot.render(null);
+        return;
+      }
+      import('@/components/StoriesPanel').then(({ StoriesPanel }) => {
+        if (!storiesPanelRoot) return;
+        storiesPanelRoot.render(
+          createElement(StoriesPanel, {
+            entries: storyEntries,
+            activeUsername: activeStoryUsername,
+            replyStatus: storyReplyStatus,
+            onOpen: handleStoryOpen,
+            onNext: handleStoryNext,
+            onClose: () => {
+              storiesPanelDismissed = true;
+              renderStoriesPanel();
+            },
+          }),
+        );
+      });
+    }
+
+    async function scanStories(): Promise<void> {
+      if (!isInstagram) return;
+      const rawEntries = getStoryTrayEntries();
+      const reacted = await getReactedUsernames();
+      storyEntries = rawEntries.map((e) => ({ ...e, reacted: reacted.has(e.username) }));
+
+      if (isStoryViewerOpen()) {
+        activeStoryUsername = getOpenStoryUsername() || activeStoryUsername;
+        storyReplyStatus = isReplyAvailableOnOpenStory() ? 'available' : 'unavailable';
+      } else {
+        activeStoryUsername = null;
+        storyReplyStatus = 'unknown';
+      }
+
+      renderStoriesPanel();
+    }
+
+    // Fired by the interceptor whenever an outgoing thread broadcast (DM
+    // text, story reply, or quick emoji reaction) succeeds. Only counts as
+    // a story reaction when the story viewer is open at the same moment —
+    // a plain DM send never has the viewer dialog open, so this doesn't
+    // false-positive on ordinary messaging.
+    window.addEventListener('replier:broadcast-sent', (() => {
+      if (!isInstagram || !isStoryViewerOpen() || !activeStoryUsername) return;
+      const username = activeStoryUsername;
+      markStoryReacted(username).then(() => {
+        storyEntries = storyEntries.map((e) =>
+          e.username === username ? { ...e, reacted: true } : e,
+        );
+        renderStoriesPanel();
+      });
+    }) as EventListener);
+
+    function handleStoryOpen(entry: StoryTrayEntry): void {
+      openStoryEntry(entry);
+      // Give the viewer dialog a moment to mount before re-scanning.
+      ctx.setTimeout(scanStories, 400);
+    }
+
+    function handleStoryNext(): void {
+      const justClosedUsername = activeStoryUsername;
+      closeActiveStory();
+      ctx.setTimeout(async () => {
+        const rawEntries = getStoryTrayEntries();
+        const reacted = await getReactedUsernames();
+        storyEntries = rawEntries.map((e) => ({ ...e, reacted: reacted.has(e.username) }));
+        const next = storyEntries.find(
+          (e) => !e.reacted && e.username !== justClosedUsername,
+        );
+        if (next) {
+          openStoryEntry(next);
+          ctx.setTimeout(scanStories, 400);
+        } else {
+          activeStoryUsername = null;
+          storyReplyStatus = 'unknown';
+          renderStoriesPanel();
+        }
+      }, 300);
+    }
+
+    function attachStoriesObserver(): void {
+      if (!isInstagram || storiesObserver) return;
+      storiesObserver = new MutationObserver(() => {
+        if (storiesScanDebounce) clearTimeout(storiesScanDebounce);
+        storiesScanDebounce = setTimeout(scanStories, 1200);
+      });
+      storiesObserver.observe(document.body, { childList: true, subtree: true });
+      ctx.setTimeout(scanStories, 1500);
+    }
+
+    attachStoriesObserver();
 
     // =========================================================================
     // CONTACT DETECTION + AUTO-GENERATION
@@ -1060,6 +1212,8 @@ export default defineContentScript({
       disposeConversationWatch?.();
       messageObserver?.disconnect();
       scrapeAbortController?.abort();
+      storiesObserver?.disconnect();
+      if (storiesScanDebounce) clearTimeout(storiesScanDebounce);
       hidePopover();
     });
   },

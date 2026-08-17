@@ -57,11 +57,15 @@ export const whatsappAdapter: PlatformAdapter = {
       // silently dropped by storeMessagesDeduped's unconditional ID check.
       const nativeId = querySelector(SELECTORS.messageIdNode, row)?.getAttribute('data-id');
       const timeBucket = Math.round((timestamps[i] ?? Date.now()) / 60000);
+      // A batch scrape only ever sees one snapshot of the DOM, so there is no
+      // later mutation to re-check an 'unknown' row against — fall back to
+      // the old default here, unlike the live observer below.
+      const sender = data.sender === 'unknown' ? 'contact' : data.sender;
       return {
         id: nativeId
           ? `wa-${nativeId}`
-          : `wa-dom-${simpleHash(data.content + data.sender + timeBucket)}`,
-        sender: data.sender,
+          : `wa-dom-${simpleHash(data.content + sender + timeBucket)}`,
+        sender,
         content: data.content,
         contentType: data.contentType,
         mediaUrl: data.mediaUrl,
@@ -129,6 +133,12 @@ export const whatsappAdapter: PlatformAdapter = {
       container ? querySelectorAll(SELECTORS.messageBubble, container).map(rowIdentity) : [],
     );
 
+    // Rows whose sender is still 'unknown' (no aria-label, tail, or receipt
+    // yet) wait here instead of being reported immediately. Committing to a
+    // guess on first sight is what mislabeled just-sent messages as the
+    // contact's: those markers land a beat after the row itself does.
+    let pendingSince = new Map<string, number>();
+
     const observer = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -138,21 +148,41 @@ export const whatsappAdapter: PlatformAdapter = {
         const rows = querySelectorAll(SELECTORS.messageBubble, current);
         const selfName = getSelfName(rows);
         const nextSeenIds = new Set<string>();
+        const nextPendingSince = new Map<string, number>();
+        const now = Date.now();
 
         for (const row of rows) {
           const key = rowIdentity(row);
-          nextSeenIds.add(key);
-          if (seenIds.has(key)) continue;
+          if (seenIds.has(key)) {
+            nextSeenIds.add(key);
+            continue;
+          }
 
           const parsed = parseRow(row, selfName);
           if (!parsed) continue;
+
+          let sender: 'user' | 'contact';
+          if (parsed.sender !== 'unknown') {
+            sender = parsed.sender;
+          } else {
+            const firstSeen = pendingSince.get(key) ?? now;
+            if (now - firstSeen < UNKNOWN_SENDER_GRACE_MS) {
+              // Give WhatsApp more time to decorate the row; re-check next tick.
+              nextPendingSince.set(key, firstSeen);
+              continue;
+            }
+            // Grace period elapsed with no signal — fall back to the old default.
+            sender = 'contact';
+          }
+
+          nextSeenIds.add(key);
           const nativeId = querySelector(SELECTORS.messageIdNode, row)?.getAttribute('data-id');
           const timestamp = parsed.timestamp ?? Date.now();
           callback({
             id: nativeId
               ? `wa-${nativeId}`
-              : `wa-dom-${simpleHash(parsed.content + parsed.sender + Math.round(timestamp / 60000))}`,
-            sender: parsed.sender,
+              : `wa-dom-${simpleHash(parsed.content + sender + Math.round(timestamp / 60000))}`,
+            sender,
             content: parsed.content,
             contentType: parsed.contentType,
             mediaUrl: parsed.mediaUrl,
@@ -161,11 +191,23 @@ export const whatsappAdapter: PlatformAdapter = {
         }
 
         seenIds = nextSeenIds;
+        pendingSince = nextPendingSince;
       }, 300);
     });
 
     if (container) {
-      observer.observe(container, { childList: true, subtree: true });
+      // attributes is needed alongside childList: a pending 'unknown' row only
+      // gets re-checked when another mutation fires the debounce again, and
+      // the tail/delivery-receipt markers that resolve it may land as an
+      // attribute swap (aria-label, data-icon) on an existing node rather
+      // than a new child — childList alone would miss that and leave the row
+      // stuck pending until the grace period times out on its own.
+      observer.observe(container, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['aria-label', 'data-icon', 'data-testid'],
+      });
     }
 
     return observer;
@@ -308,7 +350,7 @@ export const whatsappAdapter: PlatformAdapter = {
 };
 
 interface ParsedRow {
-  sender: 'user' | 'contact';
+  sender: 'user' | 'contact' | 'unknown';
   content: string;
   contentType: MessageContentType;
   mediaUrl?: string;
@@ -426,12 +468,23 @@ function parseRow(row: HTMLElement, selfName: string | null): ParsedRow | null {
  * Ordered by reliability as measured against a real conversation: the
  * aria-label covered 39 of 40 rows, while bubble tails covered only 32
  * (WhatsApp draws a tail on the first message of a run, not on every one).
+ *
+ * Returns 'unknown' rather than guessing when none of these signals are
+ * present yet — all of them (the aria-label, the tail, the delivery receipt)
+ * are attached by WhatsApp a beat *after* a just-sent row first appears in
+ * the DOM, not at insert time. Guessing 'contact' in that gap is how your own
+ * outgoing message came back mislabeled as an incoming one from them: it also
+ * defeats the live observer's own dedup, since a message already stored via
+ * the accept-reply flow gets a second row inserted under the wrong sender.
+ * Callers that only ever see one snapshot (the batch scrape) should coerce
+ * 'unknown' to 'contact' themselves; the live observer instead waits and
+ * re-checks (see observeNewMessages).
  */
 function detectSender(
   row: HTMLElement,
   senderName: string | null,
   selfName: string | null,
-): 'user' | 'contact' {
+): 'user' | 'contact' | 'unknown' {
   // 1. Explicit accessibility label on the message meta.
   if (row.querySelector('span[aria-label="You:"]')) return 'user';
 
@@ -449,7 +502,7 @@ function detectSender(
     return 'user';
   }
 
-  return 'contact';
+  return 'unknown';
 }
 
 /**
@@ -657,6 +710,13 @@ function normalizeName(raw: string): string {
  */
 /** Within this many px of the true bottom counts as "already there." */
 const BOTTOM_THRESHOLD_PX = 40;
+
+/**
+ * How long observeNewMessages waits for a row with no sender signal yet
+ * (fresh outgoing rows before WhatsApp attaches the tail/receipt) before
+ * giving up and falling back to 'contact'.
+ */
+const UNKNOWN_SENDER_GRACE_MS = 2000;
 
 function isNearBottom(scrollable: HTMLElement): boolean {
   return scrollable.scrollHeight - scrollable.scrollTop - scrollable.clientHeight < BOTTOM_THRESHOLD_PX;

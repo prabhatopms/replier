@@ -11,6 +11,23 @@ export default defineUnlistedScript(() => {
     '/graphql',
   ];
 
+  /**
+   * Instagram sends every outgoing thread message/reaction — plain DM text,
+   * story replies, and the quick emoji "reel react" — through
+   * `/api/v1/direct_v2/threads/broadcast/<type>/`. This only signals that
+   * *a* broadcast request the user's own client made succeeded; it carries
+   * no payload. content.ts correlates it with "the story viewer was open
+   * at the time" to know it was a story reaction rather than a plain DM,
+   * so this stays a thin, content-free signal rather than guessing at
+   * request body shape.
+   */
+  function dispatchBroadcastSignal(url: string, ok: boolean): void {
+    if (!ok || !url.includes('/broadcast/')) return;
+    window.dispatchEvent(
+      new CustomEvent('replier:broadcast-sent', { detail: { url, timestamp: Date.now() } }),
+    );
+  }
+
   const originalFetch = window.fetch;
 
   window.fetch = async function (
@@ -24,6 +41,8 @@ export default defineUnlistedScript(() => {
         : args[0] instanceof Request
           ? args[0].url
           : '';
+
+    dispatchBroadcastSignal(url, response.ok);
 
     const shouldIntercept = INTERCEPT_PATTERNS.some((pattern) =>
       url.includes(pattern),
@@ -78,6 +97,10 @@ export default defineUnlistedScript(() => {
     const xhr = this as XMLHttpRequest & { _replierUrl?: string };
     const url = xhr._replierUrl || '';
     const shouldIntercept = INTERCEPT_PATTERNS.some((p) => url.includes(p));
+
+    this.addEventListener('load', function () {
+      dispatchBroadcastSignal(url, this.status >= 200 && this.status < 300);
+    });
 
     if (shouldIntercept) {
       this.addEventListener('load', function () {

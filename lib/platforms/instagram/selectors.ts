@@ -80,6 +80,21 @@ export const SELECTORS = {
   displayName: [
     '[data-pagelet="IGDInboxHeaderOffMsys"] span[title]',
   ],
+
+  /** The horizontally-scrollable story tray on the feed */
+  storyTray: [
+    '[data-pagelet="story_tray"]',
+  ],
+
+  /**
+   * Individual story avatar buttons within the tray. Instagram encodes both
+   * the username and seen state directly in the aria-label:
+   * "Story by USERNAME, seen" / "Story by USERNAME, not seen" — confirmed
+   * against live markup 2026-08.
+   */
+  storyTrayItem: [
+    'div[aria-label^="Story by "]',
+  ],
 } as const;
 
 /**

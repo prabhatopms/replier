@@ -74,6 +74,23 @@ export async function getMessageCount(contactId: string): Promise<number> {
   return db.messages.where('contactId').equals(contactId).count();
 }
 
+/**
+ * Delete specific messages by id, scoped to a contact so a stray/incorrect
+ * id from another conversation can't delete the wrong thing.
+ */
+export async function deleteMessages(
+  contactId: string,
+  messageIds: string[],
+): Promise<number> {
+  const ids = await db.messages
+    .where('id')
+    .anyOf(messageIds)
+    .filter((m) => m.contactId === contactId)
+    .primaryKeys();
+  await db.messages.bulkDelete(ids);
+  return ids.length;
+}
+
 export async function getContactMessageCount(contactId: string): Promise<number> {
   return db.messages
     .where('contactId')

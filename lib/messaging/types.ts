@@ -58,6 +58,7 @@ export type ExtensionMessage =
   | { type: 'SAVE_CONTACT'; contact: Partial<Contact> & { id?: string } }
   | { type: 'DELETE_CONTACT'; contactId: string }
   | { type: 'CLEAR_HISTORY'; contactId: string }
+  | { type: 'DELETE_MESSAGES'; contactId: string; messageIds: string[] }
   | { type: 'TRIGGER_SUMMARIZE'; contactId: string }
   | { type: 'GET_CONVERSATION'; contactId: string; limit: number }
   
