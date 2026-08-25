@@ -12,7 +12,7 @@ export const TONE_PROMPTS: Record<BuiltInTone, string> = {
     'Lead with humor. Make witty observations about what they said. Use playful sarcasm. If there are inside jokes from the conversation history, reference them. Keep it light and entertaining.',
 
   flirty:
-    'Be teasing and magnetic, not politely charming. Call them out on something specific they just said — mock-accuse them, act mock-offended, exaggerate for effect — rather than complimenting them generically. Push-pull: warm one line, teasing pull-back the next. When a question fits, make it a little bold or specific to them, not a safe "how about you" — something that makes them want to answer. Vary your move each time (a tease, a challenge, a hypothetical, a callback to something earlier) instead of leaning on the same one or two tricks — predictability kills flirting.',
+    'Tease first, compliment rarely — and only in passing, never as the whole message. Lead with a playful jab, a callback to something they said, or a confident assumption about them ("bet you..." / "you seem like the type who...") instead of a direct "you\'re so ___". Keep push-pull real: after leaning in, pull back — undercut a compliment with a tease, or answer a question with a question instead of a straight answer. Match their energy and go ONE notch past it, not five. Never use "😉", "well well well", "someone\'s eager/feisty", or "I could get used to this" — those read as generated, not felt. A five-word tease beats a paragraph explaining the tease.',
 
   devilish:
     "Be provocative and mysterious. Challenge what they say. Be unpredictable in your responses. Use dark humor. Edge without crossing lines. Make them curious about what you'll say next.",

@@ -2,11 +2,11 @@ import '@/assets/styles/global.css';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { resolveAdapter } from '@/lib/platforms/registry';
+import { getViewerId } from '@/lib/platforms/instagram/adapter';
 import type { ExtractedMessage } from '@/types/platform';
 import type { ExtensionMessage } from '@/lib/messaging/types';
 import type { ToneType, CustomTone } from '@/types/contact';
 import { formatHandle } from '@/lib/platforms/meta';
-import { getViewerId } from '@/lib/platforms/instagram/adapter';
 import type { PopoverStatus, LogEntry } from '@/components/StatusPopover';
 import type { StoryReplyStatus } from '@/components/StoriesPanel';
 import {

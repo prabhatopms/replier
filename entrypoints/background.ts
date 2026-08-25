@@ -21,6 +21,7 @@ import {
   storeMessagesDeduped,
   reconcileMessages,
   deleteMessages,
+  messageExists,
 } from '@/lib/db/messages';
 import {
   getPendingReplyForContact,
@@ -71,14 +72,20 @@ async function handleMessage(
       const contact = await getContact(message.contactId);
       if (!contact) return { ok: false, error: 'Contact not found' };
 
+      // The live DOM/API observers re-surface already-stored messages
+      // whenever Instagram's virtualized list re-renders them (e.g. scrolling
+      // through history) — check before storing so that replay doesn't look
+      // like a genuinely new message below.
+      const alreadyStored = await messageExists(message.message.id);
+
       await storeMessage(
         message.contactId,
         contact.platform,
         message.message,
       );
 
-      // Only auto-generate if it's an incoming message from the contact
-      if (message.message.sender === 'contact' && contact.isActive) {
+      // Only auto-generate for a genuinely new incoming message from the contact
+      if (!alreadyStored && message.message.sender === 'contact' && contact.isActive) {
         generationQueue.enqueue({
           contactId: message.contactId,
           triggerMessageId: message.message.id,

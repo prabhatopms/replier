@@ -25,6 +25,21 @@ export async function storeMessage(
   return message;
 }
 
+/**
+ * Whether a message with this ID is already stored.
+ *
+ * Instagram virtualizes its message list, so scrolling through history can
+ * re-surface bubbles the live DOM observer never saw this session — it has
+ * no way to tell "old message, newly rendered" from "genuinely new message"
+ * on its own. Callers that auto-trigger on new contact messages (e.g. the
+ * NEW_MESSAGE handler enqueuing a reply) need this check first, or every
+ * scroll through history re-fires those side effects for messages that
+ * already arrived.
+ */
+export async function messageExists(id: string): Promise<boolean> {
+  return (await db.messages.get(id)) !== undefined;
+}
+
 export async function storeMessages(
   contactId: string,
   platform: Platform,
