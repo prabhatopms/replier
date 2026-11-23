@@ -16,6 +16,7 @@ export default defineConfig({
       'https://web.whatsapp.com/*',
       'https://api.anthropic.com/*',
       'https://generativelanguage.googleapis.com/*',
+      'https://api.openai.com/*',
     ],
     action: {},
     web_accessible_resources: [

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { LLMProviderType } from '@/lib/llm/types';
 import { PROVIDER_MODELS, PROVIDER_LABELS, DEFAULT_MODELS } from '@/lib/llm/types';
+import { fetchModels, type ModelOption } from '@/lib/llm/models';
 import type { CustomTone, BuiltInTone } from '@/types/contact';
 import { TONE_LABELS, BUILT_IN_TONES } from '@/types/contact';
 import { TONE_PROMPTS } from '@/lib/llm/tones';
@@ -101,6 +102,37 @@ export function Settings({ onBack }: SettingsProps) {
 
   useEffect(() => { loadSettings(); }, []);
 
+  // ── Live model list ──
+  const [liveModels, setLiveModels] = useState<ModelOption[] | null>(null);
+  const [modelsStatus, setModelsStatus] = useState<'idle' | 'loading' | 'live' | 'error'>('idle');
+  const [modelsError, setModelsError] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const activeKey = apiKeys[API_KEY_META[provider].storageKey] || '';
+
+  useEffect(() => {
+    setLiveModels(null);
+    if (!activeKey.trim()) { setModelsStatus('idle'); return; }
+    let cancelled = false;
+    setModelsStatus('loading');
+    // Debounce so we don't call the API on every keystroke while pasting a key
+    const timer = setTimeout(async () => {
+      try {
+        const list = await fetchModels(provider, activeKey);
+        if (cancelled) return;
+        if (list.length === 0) throw new Error('No chat models returned for this key');
+        setLiveModels(list);
+        setModelsStatus('live');
+        // Saved model retired or belongs to another provider → pick the newest
+        setModel((current) => (list.some((m) => m.value === current) ? current : list[0].value));
+      } catch (err) {
+        if (cancelled) return;
+        setModelsStatus('error');
+        setModelsError(err instanceof Error ? err.message : String(err));
+      }
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [provider, activeKey, refreshTick]);
+
   async function loadSettings() {
     const result = await browser.storage.local.get(['apiKey', 'geminiApiKey', 'openaiApiKey', 'userProfile', 'llmConfig', 'customSystemPrompt', 'customTones']);
     setApiKeys({
@@ -176,7 +208,11 @@ export function Settings({ onBack }: SettingsProps) {
 
   const currentKeyMeta = API_KEY_META[provider];
   const currentKeyValue = apiKeys[currentKeyMeta.storageKey] || '';
-  const models = PROVIDER_MODELS[provider];
+  const fallbackModels = PROVIDER_MODELS[provider];
+  const models = liveModels
+    ?? (fallbackModels.some((m) => m.value === model) || !model
+      ? fallbackModels
+      : [{ value: model, label: `${model} (saved)` }, ...fallbackModels]);
 
   return (
     <div style={{ fontFamily: F, color: T.body }}>
@@ -274,7 +310,22 @@ export function Settings({ onBack }: SettingsProps) {
 
       {/* ── Model card ── */}
       <div style={card}>
-        <div style={fieldLabel}>Model</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={fieldLabel}>Model</div>
+          <button
+            type="button"
+            onClick={() => setRefreshTick((t) => t + 1)}
+            disabled={!activeKey.trim() || modelsStatus === 'loading'}
+            title="Reload the model list from the provider"
+            style={{
+              border: 'none', background: 'transparent', fontFamily: F, fontSize: 10.5,
+              color: activeKey.trim() ? T.indigo : T.muted,
+              cursor: activeKey.trim() ? 'pointer' : 'default', padding: 0, marginBottom: 6,
+            }}
+          >
+            {modelsStatus === 'loading' ? 'Loading…' : '↻ Refresh'}
+          </button>
+        </div>
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
@@ -292,6 +343,12 @@ export function Settings({ onBack }: SettingsProps) {
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
+        <p style={{ fontSize: 10.5, marginTop: 7, lineHeight: 1.5, color: modelsStatus === 'error' ? '#dc2626' : T.muted }}>
+          {modelsStatus === 'live' && `${models.length} models available for your key.`}
+          {modelsStatus === 'loading' && 'Fetching models for your key…'}
+          {modelsStatus === 'idle' && 'Add an API key to load the latest models.'}
+          {modelsStatus === 'error' && `Couldn't load models (${modelsError}). Showing the built-in list.`}
+        </p>
         {provider === 'gemini' && (
           <p style={{ fontSize: 10.5, color: '#d97706', marginTop: 7, lineHeight: 1.5 }}>
             ⚠ Gemini safety filters may block flirty/devilish tones.

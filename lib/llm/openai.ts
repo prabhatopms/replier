@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from './http';
 import type { LLMProvider, LLMMessage } from './types';
 import { fetchImageAsBase64 } from './vision';
 
@@ -18,7 +19,7 @@ export const openaiProvider: LLMProvider = {
   async generateReply(systemPrompt: string, messages: LLMMessage[]): Promise<string> {
     const [apiKey, model] = await Promise.all([getApiKey(), getModel()]);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -70,7 +71,7 @@ export const openaiProvider: LLMProvider = {
 
     const prompt = buildSummarizationPrompt(existingSummary, newMessages);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
