@@ -35,6 +35,15 @@ export interface ContactContext {
   recentMessages?: string[];
 }
 
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** Grow a textarea to fit its content (CSS maxHeight still caps it). */
+function autoGrow(el: HTMLTextAreaElement): void {
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 interface StatusPopoverProps {
   status: PopoverStatus;
   contactName: string;
@@ -269,6 +278,7 @@ export function StatusPopover({
   useEffect(() => {
     if (replyText) {
       setEditText(replyText);
+      requestAnimationFrame(() => { if (textareaRef.current) autoGrow(textareaRef.current); });
       setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus();
@@ -966,14 +976,15 @@ export function StatusPopover({
                 <textarea
                   ref={textareaRef}
                   value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
+                  rows={3}
+                  onChange={(e) => { setEditText(e.target.value); autoGrow(e.currentTarget); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend(); }}
                   style={{
                     display: 'block', width: '100%', border: 'none', outline: 'none',
-                    resize: 'none', fontSize: 13.5, lineHeight: 1.45, color: T.body,
+                    resize: 'vertical', fontSize: 13.5, lineHeight: 1.45, color: T.body,
                     background: 'transparent', fontFamily: F,
-                    padding: '10px 12px 28px', minHeight: 62,
-                    boxSizing: 'border-box',
+                    padding: '10px 12px 28px', minHeight: 80, maxHeight: 260,
+                    overflowY: 'auto', boxSizing: 'border-box',
                   }}
                   placeholder="Edit your reply…"
                 />
@@ -982,7 +993,7 @@ export function StatusPopover({
                   display: 'flex', alignItems: 'center', gap: 4,
                   pointerEvents: 'none',
                 }}>
-                  <span style={keycap}>⌘</span>
+                  <span style={keycap}>{IS_MAC ? '⌘' : 'Ctrl'}</span>
                   <span style={keycap}>↵</span>
                   <span style={{ fontSize: 10, color: '#a8a8b4' }}>to send</span>
                 </div>

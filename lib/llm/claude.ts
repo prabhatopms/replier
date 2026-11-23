@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from './http';
 import type { LLMProvider, LLMMessage, LLMConfig } from './types';
 import { DEFAULT_LLM_CONFIG } from './types';
 import { buildSummarizationPrompt } from './prompt-builder';
@@ -58,7 +59,7 @@ export const claudeProvider: LLMProvider = {
       }),
     );
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,9 +89,15 @@ export const claudeProvider: LLMProvider = {
     }
 
     const data = (await response.json()) as {
-      content: Array<{ text: string }>;
+      content: Array<{ type: string; text?: string }>;
     };
-    return data.content[0].text;
+    const text = data.content
+      .filter((b) => b.type === 'text' && b.text)
+      .map((b) => b.text)
+      .join('')
+      .trim();
+    if (!text) throw new Error('Claude returned an empty response.');
+    return text;
   },
 
   async summarizeConversation(

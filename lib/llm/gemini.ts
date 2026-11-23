@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './http';
+import { fetchModels } from './models';
 import type { LLMProvider, LLMMessage, LLMConfig } from './types';
 import { DEFAULT_LLM_CONFIG } from './types';
 import { buildSummarizationPrompt } from './prompt-builder';
@@ -145,6 +147,37 @@ async function toGeminiContents(messages: LLMMessage[]): Promise<GeminiContent[]
   return contents;
 }
 
+// -- Fallback models --
+
+let cachedFallbacks: string[] | null = null;
+
+function version(id: string): number {
+  return parseFloat(id.match(/^gemini-(\d+(?:\.\d+)?)/)?.[1] ?? '0');
+}
+
+// Used if the live model list can't be loaded
+const STATIC_FALLBACKS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
+
+/** Stable (non-preview, non-alias) flash models, best first, excluding `current`. */
+async function fallbackModels(apiKey: string, current: string): Promise<string[]> {
+  if (!cachedFallbacks) {
+    try {
+      const all = await fetchModels('gemini', apiKey);
+      // Only plain versioned flash models (gemini-3.5-flash, gemini-3.1-flash-lite…),
+      // newest version first, full flash before lite at the same version.
+      const live = all
+        .map((m) => m.value)
+        .filter((id) => /^gemini-\d+(\.\d+)?-flash(-lite)?$/i.test(id))
+        .sort((x, y) => version(y) - version(x) || Number(/lite/.test(x)) - Number(/lite/.test(y)));
+      if (live.length) cachedFallbacks = live;
+    } catch (err) {
+      console.warn('[Oxytocin] Could not load Gemini model list for fallback:', err);
+    }
+  }
+  const list = cachedFallbacks ?? STATIC_FALLBACKS;
+  return list.filter((id) => id !== current);
+}
+
 // -- Provider --
 
 export const geminiProvider: LLMProvider = {
@@ -169,24 +202,53 @@ export const geminiProvider: LLMProvider = {
       },
       contents,
       generationConfig: {
-        maxOutputTokens: config.maxTokens,
+        // Newer Gemini models "think" first and those tokens count against
+        // this limit; 512 can be used up before any reply text is written.
+        maxOutputTokens: Math.max(config.maxTokens, 4096),
         temperature: 0.9,
       },
       safetySettings: SAFETY_SETTINGS,
     };
 
     // Gemini uses API key as query param
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    // Try the chosen model first. If Google says it's overloaded (503/429)
+    // or no longer available (404), fall back to other stable flash models.
+    const candidates = [model, ...(await fallbackModels(apiKey, model))];
+    let response: Response | null = null;
+    let lastError = '';
+    const tried: string[] = [];
+    for (const candidate of candidates.slice(0, 6)) {
+      tried.push(candidate);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent`;
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(url, {
+          method: 'POST',
+          // Key in a header, not the URL, so it doesn't end up in logs
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify(body),
+        }, 25_000); // per model: a busy model can hang instead of returning 503
+      } catch (err) {
+        lastError = `${candidate}: ${err instanceof Error ? err.message : String(err)}`;
+        continue; // timed out or network error: try the next model
+      }
+      if (res.ok) {
+        response = res;
+        if (candidate !== model) {
+          // Remember the model that worked so the next reply goes straight to it
+          console.warn(`[Oxytocin] ${model} unavailable, switched to ${candidate}`);
+          await browser.storage.local.set({ llmConfig: { ...config, model: candidate } });
+        }
+        break;
+      }
+      lastError = `Gemini API error (${res.status}) on ${candidate}: ${await res.text()}`;
+      if (![404, 429, 503].includes(res.status)) break; // auth/bad request: don't retry
+    }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Gemini API error (${response.status}): ${error}`);
+    if (!response) {
+      throw new Error(
+        tried.length > 1 ? `Tried ${tried.join(', ')}. Last: ${lastError}` : lastError,
+      );
     }
 
     const data = (await response.json()) as GeminiResponse;
@@ -230,7 +292,12 @@ export const geminiProvider: LLMProvider = {
       );
     }
 
-    const text = candidate.content?.parts?.[0]?.text;
+    // Skip "thought" parts from thinking models; join the actual reply text
+    const text = (candidate.content?.parts ?? [])
+      .filter((p) => !(p as { thought?: boolean }).thought && p.text)
+      .map((p) => p.text)
+      .join('')
+      .trim();
     if (!text) {
       if (candidate.finishReason === 'STOP') {
         throw new Error(
